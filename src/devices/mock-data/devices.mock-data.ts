@@ -1,0 +1,68 @@
+import { Device } from '../domain/device.model.js';
+
+export const devices: Device[] = [
+  {
+    id: 'env-sensor-001',
+    name: 'Office Environment Sensor',
+    type: 'environmental-sensor',
+    manufacturer: 'SenseWorks',
+    model: 'EnviroSense E2',
+    firmwareVersion: '2.4.1',
+  },
+  {
+    id: 'water-sensor-001',
+    name: 'Reservoir Water Monitor',
+    type: 'water-quality-sensor',
+    manufacturer: 'AquaMetrics',
+    model: 'WaterWatch W5',
+    firmwareVersion: '1.8.0',
+  },
+  {
+    id: 'vibration-sensor-001',
+    name: 'Production Motor Monitor',
+    type: 'industrial-vibration-sensor',
+    manufacturer: 'IndustrialSense',
+    model: 'VibraCheck V3',
+    firmwareVersion: '3.1.2',
+  },
+  {
+    id: 'asset-tracker-001',
+    name: 'Mobile Equipment Tracker',
+    type: 'asset-tracker',
+    manufacturer: 'TrackPoint',
+    model: 'TrackPoint T10',
+    firmwareVersion: '4.0.3',
+  },
+  {
+    id: 'temperature-sensor-001',
+    name: 'Cold Room Temperature Sensor',
+    type: 'temperature-sensor',
+    manufacturer: 'ThermoLink',
+    model: 'ColdGuard C2',
+    firmwareVersion: '2.0.5',
+  },
+  {
+    id: 'weather-station-001',
+    name: 'Rooftop Weather Station',
+    type: 'weather-station',
+    manufacturer: 'ClimateNode',
+    model: 'WeatherNode W8',
+    firmwareVersion: '5.2.0',
+  },
+  {
+    id: 'energy-meter-001',
+    name: 'Workshop Energy Meter',
+    type: 'energy-meter',
+    manufacturer: 'GridSense',
+    model: 'PowerMonitor P4',
+    firmwareVersion: '1.6.4',
+  },
+  {
+    id: 'gateway-001',
+    name: 'Remote Site Gateway',
+    type: 'iot-gateway',
+    manufacturer: 'ConnectCore',
+    model: 'EdgeLink G2',
+    firmwareVersion: '1.3.0',
+  },
+];

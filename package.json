@@ -1,0 +1,51 @@
+{
+  "name": "iot-operations-assistant",
+  "version": "0.0.1",
+  "description": "A GenAI-enabled IoT operations application with grounded tool use, RAG, human approval, evaluation, and execution tracing.",
+  "author": "Han Xiao",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "node --env-file=.env ./node_modules/.bin/nest start",
+    "start:dev": "node --env-file=.env ./node_modules/.bin/nest start --watch",
+    "start:debug": "node --env-file=.env ./node_modules/.bin/nest start --debug --watch",
+    "start:prod": "node --env-file=.env dist/main",
+    "lint": "oxlint src/ test/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "test:debug": "vitest --inspect-brk --no-file-parallelism",
+    "ai:test": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/e2e/ai/device-assistant.e2e-spec.ts --reporter=verbose",
+    "ai:evaluate": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
+    "rag:retrieve": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/ai/rag/document-retrieval.integration-spec.ts --reporter=verbose --no-file-parallelism",
+    "rag:evaluate": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/rag/rag-answer.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
+    "ai:evaluate:integrated": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.integrated.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
+    "ai:evaluate:actions": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.actions.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
+    "ai:evaluate:traces": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.trace.evaluation-spec.ts --reporter=verbose --no-file-parallelism"
+  },
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.0",
+    "@nestjs/schematics": "^12.0.0",
+    "@nestjs/testing": "^12.0.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "oxlint": "^1.58.0",
+    "prettier": "^3.4.2",
+    "source-map-support": "^0.5.21",
+    "typescript": "^6.0.2",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^4.1.2"
+  }
+}
