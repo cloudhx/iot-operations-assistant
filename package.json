@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
+    "mcp:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/mcp/mcp-stdio.integration-spec.ts --reporter=verbose --no-file-parallelism",
     "ai:test": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/e2e/ai/device-assistant.e2e-spec.ts --reporter=verbose",
     "ai:evaluate": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
     "rag:retrieve": "node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/ai/rag/document-retrieval.integration-spec.ts --reporter=verbose --no-file-parallelism",
@@ -28,13 +29,16 @@
   },
   "dependencies": {
     "@google/genai": "^2.22.0",
+    "@modelcontextprotocol/server": "^2.2.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.2.0",
     "@nestjs/cli": "^12.0.0",
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
