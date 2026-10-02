@@ -29,6 +29,8 @@ service performs the approved business operation.
   spreading through the application.
 - A bounded, multi-round function-calling loop with explicit tool dispatch.
 - Read-only tools for device identity, latest telemetry, and recent events.
+- A standalone read-only MCP stdio adapter exposing the same deterministic
+  device, telemetry, and event services over protocol version `2026-07-28`.
 - Retrieval-augmented generation over an internal maintenance guide using
   Markdown-aware chunking, Gemini embeddings, an in-memory vector store, and
   cosine-similarity search.
@@ -228,6 +230,7 @@ tests and evaluation scripts rather than an AI HTTP controller.
 | `npm run lint` | Run Oxlint and Prettier checks |
 | `npm test` | Run all Vitest specs matched by the main config |
 | `npm run test:cov` | Run tests with coverage |
+| `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:test` | Run the Device Assistant end-to-end invocation |
 | `npm run ai:evaluate` | Run the baseline Device Assistant evaluations |
 | `npm run rag:retrieve` | Inspect standalone RAG retrieval |
@@ -257,6 +260,7 @@ API usage may incur cost.
 |   |-- device-events/        # Event model, mock data, service, REST adapter
 |   |-- devices/              # Device model, mock data, service, REST adapter
 |   |-- maintenance-work-orders/ # Deterministic side-effect service
+|   |-- mcp/               # Read-only MCP stdio protocol adapter
 |   `-- telemetry/            # Telemetry model, mock data, service, REST adapter
 |-- test/
 |   |-- e2e/                  # Full application-context invocation
@@ -308,9 +312,10 @@ context, grounded synthesis, human approval for side effects, evaluation, and
 execution tracing.
 
 Intentionally out of scope are autonomous long-running agents, multi-agent
-systems, persistent conversation memory, MCP, external vector databases,
-reranking, hybrid search, multimodal input, fine-tuning, LLM-as-a-judge,
-production identity and access control, and distributed production operations.
+systems, persistent conversation memory, assistant-side MCP client integration,
+broader third-party MCP ecosystems, external vector databases, reranking,
+hybrid search, multimodal input, fine-tuning, LLM-as-a-judge, production
+identity and access control, and distributed production operations.
 
 The omissions are deliberate: the repository focuses on clear control boundaries
 before adding infrastructure or broader agent autonomy.

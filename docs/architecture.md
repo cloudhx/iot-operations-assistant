@@ -70,6 +70,7 @@ An LLM function call is a request to the application, not execution authority.
 | Maintenance action executor | Validate and store a proposed action | Execute the work order |
 | Pending-action approval | Apply a human decision and execute an approved frozen payload | Re-run model reasoning |
 | Domain/application services | Deterministic data and business operations | LLM orchestration |
+| MCP stdio adapter | Expose read-only device, telemetry, and event services over MCP | Gemini orchestration, side effects, or domain logic |
 | `AiTraceService` | Structured facts about execution | Semantic grading of answer quality |
 | Evaluation specs | Repeatable behavioral, state, and trace checks | Production monitoring |
 
@@ -426,7 +427,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 
 ### Deliberately out of scope
 
-- MCP and third-party tool ecosystems;
+- assistant-side MCP client integration and broader third-party MCP ecosystems;
 - LangChain, LangGraph, or a generic agent framework;
 - autonomous long-running or multi-agent workflows;
 - persistent conversation memory;
