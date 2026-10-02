@@ -1,51 +1,40 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { CallToolResult } from '@modelcontextprotocol/client';
 
-import { DeviceEventsService } from '../../device-events/device-events.service.js';
-import { DevicesService } from '../../devices/devices.service.js';
-import { TelemetryService } from '../../telemetry/telemetry.service.js';
 import {
   GeminiFunctionCall,
   GeminiFunctionResult,
 } from '../gemini/gemini.types.js';
+import { McpDeviceClientService } from '../mcp/mcp-device-client.service.js';
 import { DEVICE_TOOL_NAMES } from './device-tools.js';
 
 @Injectable()
 export class DeviceToolExecutorService {
   private readonly logger = new Logger(DeviceToolExecutorService.name);
 
-  constructor(
-    private readonly devicesService: DevicesService,
-    private readonly telemetryService: TelemetryService,
-    private readonly deviceEventsService: DeviceEventsService,
-  ) {}
+  constructor(private readonly mcpClient: McpDeviceClientService) {}
 
   async execute(call: GeminiFunctionCall): Promise<GeminiFunctionResult> {
     this.logger.debug(`Executing AI tool "${call.name}"`);
 
     try {
-      let result: unknown;
+      this.assertSupportedTool(call.name);
 
-      switch (call.name) {
-        case DEVICE_TOOL_NAMES.GET_DEVICE:
-          result = this.getDevice(call);
-          break;
+      const mcpResult = await this.mcpClient.callTool(
+        call.name,
+        call.arguments,
+      );
 
-        case DEVICE_TOOL_NAMES.GET_LATEST_TELEMETRY:
-          result = this.getLatestTelemetry(call);
-          break;
-
-        case DEVICE_TOOL_NAMES.GET_RECENT_EVENTS:
-          result = this.getRecentEvents(call);
-          break;
-
-        default:
-          throw new Error(`Unknown AI tool "${call.name}"`);
+      if (mcpResult.isError === true) {
+        throw new Error(
+          `MCP tool "${call.name}" failed: ${this.readMcpError(mcpResult)}`,
+        );
       }
 
       return {
         callId: call.id,
         name: call.name,
-        result,
+        result: this.readStructuredContent(call.name, mcpResult),
       };
     } catch (error) {
       this.logger.error(
@@ -57,99 +46,43 @@ export class DeviceToolExecutorService {
     }
   }
 
-  private getDevice(call: GeminiFunctionCall): unknown {
-    const deviceId = this.requireDeviceId(call);
-    const device = this.devicesService.findById(deviceId);
-
-    if (!device) {
-      return this.deviceNotFoundResult(deviceId);
+  private assertSupportedTool(name: string): void {
+    switch (name) {
+      case DEVICE_TOOL_NAMES.GET_DEVICE:
+      case DEVICE_TOOL_NAMES.GET_LATEST_TELEMETRY:
+      case DEVICE_TOOL_NAMES.GET_RECENT_EVENTS:
+        return;
+      default:
+        throw new Error(`Unknown AI tool "${name}"`);
     }
-
-    return {
-      found: true,
-      device,
-    };
   }
 
-  private getLatestTelemetry(call: GeminiFunctionCall): unknown {
-    const deviceId = this.requireDeviceId(call);
-    const device = this.devicesService.findById(deviceId);
+  private readStructuredContent(
+    toolName: string,
+    result: CallToolResult,
+  ): Record<string, unknown> {
+    const structuredContent = result.structuredContent;
 
-    if (!device) {
-      return this.deviceNotFoundResult(deviceId);
-    }
-
-    const telemetry = this.telemetryService.findLatestByDeviceId(deviceId);
-
-    return {
-      found: true,
-      deviceId,
-      telemetry,
-    };
-  }
-
-  private getRecentEvents(call: GeminiFunctionCall): unknown {
-    const deviceId = this.requireDeviceId(call);
-    const limit = this.readOptionalLimit(call);
-    const device = this.devicesService.findById(deviceId);
-
-    if (!device) {
-      return this.deviceNotFoundResult(deviceId);
-    }
-
-    const events = this.deviceEventsService.findRecentByDeviceId(
-      deviceId,
-      limit,
-    );
-
-    return {
-      found: true,
-      deviceId,
-      events,
-    };
-  }
-
-  private deviceNotFoundResult(deviceId: string) {
-    return {
-      found: false,
-      deviceId,
-      error: {
-        code: 'DEVICE_NOT_FOUND',
-        message: `Device "${deviceId}" was not found.`,
-      },
-    };
-  }
-
-  private requireDeviceId(call: GeminiFunctionCall): string {
-    const deviceId = call.arguments.deviceId;
-
-    if (typeof deviceId !== 'string' || deviceId.trim().length === 0) {
+    if (!this.isRecord(structuredContent)) {
       throw new Error(
-        `Tool "${call.name}" requires a non-empty string argument "deviceId"`,
+        `MCP tool "${toolName}" returned invalid structured content`,
       );
     }
 
-    return deviceId;
+    return structuredContent;
   }
 
-  private readOptionalLimit(call: GeminiFunctionCall): number | undefined {
-    const limit = call.arguments.limit;
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
 
-    if (limit === undefined) {
-      return undefined;
-    }
+  private readMcpError(result: CallToolResult): string {
+    const message = result.content
+      .filter((content) => content.type === 'text')
+      .map((content) => content.text.trim())
+      .filter((text) => text.length > 0)
+      .join(' ');
 
-    if (
-      typeof limit !== 'number' ||
-      !Number.isInteger(limit) ||
-      limit < 1 ||
-      limit > 20
-    ) {
-      throw new Error(
-        `Tool "${call.name}" argument "limit" must be an integer between 1 and 20`,
-      );
-    }
-
-    return limit;
+    return message || 'MCP returned an error result';
   }
 }

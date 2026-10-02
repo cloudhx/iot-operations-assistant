@@ -29,7 +29,7 @@ service performs the approved business operation.
   spreading through the application.
 - A bounded, multi-round function-calling loop with explicit tool dispatch.
 - Read-only tools for device identity, latest telemetry, and recent events.
-- A standalone read-only MCP stdio adapter exposing the same deterministic
+- An assistant-side MCP client and read-only stdio server exposing deterministic
   device, telemetry, and event services over protocol version `2026-07-28`.
 - Retrieval-augmented generation over an internal maintenance guide using
   Markdown-aware chunking, Gemini embeddings, an in-memory vector store, and
@@ -66,7 +66,8 @@ User question
       |          +--> maintenance knowledge retrieval
       |               Markdown -> chunks -> embeddings -> vector search
       |
-      +--> deterministic device / telemetry / event services
+      +--> MCP-backed READ executor -> stdio MCP server
+                                      -> deterministic device / telemetry / event services
 
 ACTION_PROPOSAL
       |
@@ -100,8 +101,8 @@ decisions, and trade-offs.
 
 1. The user asks about a device.
 2. Gemini requests the device, telemetry, or event tools it needs.
-3. The application validates and dispatches each tool call to existing NestJS
-   services.
+3. The application dispatches each read call through the MCP client to the
+   stdio MCP server, which validates it and invokes existing NestJS services.
 4. Structured results are returned to the same Gemini interaction.
 5. Gemini synthesizes a grounded answer within a bounded number of rounds.
 
@@ -252,6 +253,7 @@ API usage may incur cost.
 |   |-- ai/
 |   |   |-- actions/          # Pending actions and deterministic approval
 |   |   |-- gemini/           # SDK boundary and normalized interaction types
+|   |   |-- mcp/              # Assistant-side MCP client and lifecycle
 |   |   |-- observability/    # Structured AI interaction traces
 |   |   |-- rag/              # Chunking, embeddings, vector search, RAG answer flow
 |   |   |-- tools/            # Tool schemas, executors, and dispatcher
@@ -276,8 +278,9 @@ API usage may incur cost.
 - Domain data is intentionally separated into identity (`Device`), measurements
   (`Telemetry`), and occurrences (`DeviceEvent`) to avoid duplicated operational
   state.
-- AI tools call NestJS services directly rather than making HTTP calls back into
-  the same application.
+- Device READ tools use MCP stdio to reach deterministic NestJS services;
+  retrieval and action-proposal capabilities retain their existing in-process
+  boundaries.
 - Gemini SDK details are isolated behind a small provider-specific boundary;
   there is no premature provider-neutral abstraction.
 - RAG supplies relatively static internal knowledge, while tools supply current
@@ -312,8 +315,8 @@ context, grounded synthesis, human approval for side effects, evaluation, and
 execution tracing.
 
 Intentionally out of scope are autonomous long-running agents, multi-agent
-systems, persistent conversation memory, assistant-side MCP client integration,
-broader third-party MCP ecosystems, external vector databases, reranking,
+systems, persistent conversation memory, broader third-party MCP ecosystems,
+external vector databases, reranking,
 hybrid search, multimodal input, fine-tuning, LLM-as-a-judge, production
 identity and access control, and distributed production operations.
 

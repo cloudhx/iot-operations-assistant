@@ -65,12 +65,13 @@ An LLM function call is a request to the application, not execution authority.
 | Assistant system instruction | Model behavior, grounding, evidence-source distinctions | Deterministic enforcement or authorization |
 | Tool definitions | Small model-facing capability contracts | Service implementation details |
 | Tool dispatcher | Capability classification, executor routing, timing, normalized failures | Domain logic |
-| Device tool executor | Argument checks and mapping to existing services | Health scoring or diagnosis |
+| Device tool executor | Whitelist READ tools and translate Gemini calls/results to/from MCP | Health scoring or diagnosis |
+| Assistant MCP client | Modern protocol negotiation, stdio child lifecycle, and `callTool` transport | Tool policy, tracing, or domain logic |
 | RAG retrieval | Document loading, chunking, embedding, similarity ranking | Final operational conclusions |
 | Maintenance action executor | Validate and store a proposed action | Execute the work order |
 | Pending-action approval | Apply a human decision and execute an approved frozen payload | Re-run model reasoning |
 | Domain/application services | Deterministic data and business operations | LLM orchestration |
-| MCP stdio adapter | Expose read-only device, telemetry, and event services over MCP | Gemini orchestration, side effects, or domain logic |
+| MCP stdio server adapter | Validate and expose read-only device, telemetry, and event services over MCP | Gemini orchestration, side effects, or domain logic |
 | `AiTraceService` | Structured facts about execution | Semantic grading of answer quality |
 | Evaluation specs | Repeatable behavioral, state, and trace checks | Production monitoring |
 
@@ -96,7 +97,9 @@ User question
   -> Gemini receives prompt and READ tool definitions
   -> Gemini requests one or more read tools
   -> dispatcher validates category and routes calls
-  -> executor calls DevicesService / TelemetryService / DeviceEventsService
+  -> executor translates the calls to MCP callTool requests
+  -> stdio MCP server validates arguments and calls deterministic services
+  -> executor translates MCP structuredContent into Gemini function results
   -> structured results return to the same Gemini interaction
   -> Gemini returns a grounded answer
   -> trace completes as ANSWERED
@@ -112,7 +115,7 @@ explicitly.
 ```text
 User asks what is happening and what guidance applies
   -> Gemini selects current-data READ tools
-  -> deterministic services return device / telemetry / event facts
+  -> MCP-backed READ tools return device / telemetry / event facts
   -> Gemini selects search_maintenance_knowledge
   -> retrieval initializes the document index once per application lifetime
        Markdown -> semantic sections -> document embeddings -> in-memory store
@@ -177,13 +180,18 @@ duplicated on the device model.
 **Trade-off:** consumers must derive current state from time-sensitive evidence,
 but the model avoids contradictory copies of status and `lastSeenAt`.
 
-### 3. Tools call services directly, not internal HTTP endpoints
+### 3. Device READ tools cross an explicit MCP boundary
 
-Tool executors receive the existing services through NestJS dependency injection.
-REST controllers are a separate adapter over the same services.
+The assistant host translates its three device READ calls to MCP `callTool`
+requests, with protocol version `2026-07-28` explicitly pinned. The stdio server
+validates each request and invokes the existing services through NestJS
+dependency injection. REST controllers remain a separate adapter over those
+services. Retrieval and action proposal stay in-process because they have not
+been exposed as MCP capabilities.
 
-**Trade-off:** tool execution is coupled to the application process, but avoids
-network overhead, duplicated contracts, and fake service boundaries.
+**Trade-off:** the protocol boundary is explicit and independently testable, but
+the host must build and manage a local child process and translate MCP results
+back into its model-facing result type.
 
 ### 4. Gemini is isolated behind a provider-specific boundary
 
@@ -427,7 +435,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 
 ### Deliberately out of scope
 
-- assistant-side MCP client integration and broader third-party MCP ecosystems;
+- broader third-party MCP ecosystems;
 - LangChain, LangGraph, or a generic agent framework;
 - autonomous long-running or multi-agent workflows;
 - persistent conversation memory;
