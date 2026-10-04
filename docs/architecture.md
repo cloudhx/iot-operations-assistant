@@ -63,10 +63,11 @@ An LLM function call is a request to the application, not execution authority.
 | `DeviceAssistantService` | Application orchestration, bounded model/tool rounds, final outcome | Device business logic, SDK response parsing, approval execution |
 | `GeminiClientService` | Google GenAI SDK lifecycle and normalized turns/function calls | IoT policy, tool business logic, generic provider abstraction |
 | Assistant system instruction | Model behavior, grounding, evidence-source distinctions | Deterministic enforcement or authorization |
-| Tool definitions | Small model-facing capability contracts | Service implementation details |
+| Tool definitions | Static retrieval/action contracts plus MCP-discovered READ contracts | Service implementation details |
 | Tool dispatcher | Capability classification, executor routing, timing, normalized failures | Domain logic |
 | Device tool executor | Whitelist READ tools and translate Gemini calls/results to/from MCP | Health scoring or diagnosis |
-| Assistant MCP client | Modern protocol negotiation, stdio child lifecycle, and `callTool` transport | Tool policy, tracing, or domain logic |
+| Assistant MCP client | Modern protocol negotiation, stdio lifecycle, cached `tools/list`, and `callTool` | Tool policy, tracing, or domain logic |
+| MCP-to-Gemini adapter | Select required authorized MCP READ tools and convert their schemas into Gemini declarations | Tool execution or dynamic authorization |
 | RAG retrieval | Document loading, chunking, embedding, similarity ranking | Final operational conclusions |
 | Maintenance action executor | Validate and store a proposed action | Execute the work order |
 | Pending-action approval | Apply a human decision and execute an approved frozen payload | Re-run model reasoning |
@@ -94,7 +95,9 @@ side effect.
 ```text
 User question
   -> DeviceAssistantService starts trace
-  -> Gemini receives prompt and READ tool definitions
+  -> MCP client lists tools once per connection
+  -> host selects required authorized READ tools and adapts their schemas for Gemini
+  -> Gemini receives prompt and the stable per-interaction tool set
   -> Gemini requests one or more read tools
   -> dispatcher validates category and routes calls
   -> executor translates the calls to MCP callTool requests
@@ -188,6 +191,12 @@ validates each request and invokes the existing services through NestJS
 dependency injection. REST controllers remain a separate adapter over those
 services. Retrieval and action proposal stay in-process because they have not
 been exposed as MCP capabilities.
+
+The same MCP connection discovers READ definitions through `tools/list`. The
+server is the source of names, descriptions, and input schemas; the host retains
+an explicit required-tool policy and converts only the supported JSON Schema
+subset to Gemini's provider-specific function format. Discovery therefore does
+not grant new authority, and MCP does not eliminate model-provider adaptation.
 
 **Trade-off:** the protocol boundary is explicit and independently testable, but
 the host must build and manage a local child process and translate MCP results

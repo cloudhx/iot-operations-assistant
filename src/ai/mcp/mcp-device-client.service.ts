@@ -1,5 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { Client, type CallToolResult } from '@modelcontextprotocol/client';
+import {
+  Client,
+  type CallToolResult,
+  type Tool,
+} from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 const MCP_PROTOCOL_VERSION = '2026-07-28';
@@ -9,6 +13,7 @@ export class McpDeviceClientService implements OnModuleDestroy {
   private readonly logger = new Logger(McpDeviceClientService.name);
   private client: Client | undefined;
   private connectionPromise: Promise<Client> | undefined;
+  private toolListPromise: Promise<readonly Tool[]> | undefined;
   private shuttingDown = false;
 
   async callTool(
@@ -23,6 +28,20 @@ export class McpDeviceClientService implements OnModuleDestroy {
     });
   }
 
+  async listTools(): Promise<readonly Tool[]> {
+    const client = await this.getConnectedClient();
+
+    this.toolListPromise ??= client
+      .listTools()
+      .then(({ tools }) => tools)
+      .catch((error: unknown) => {
+        this.toolListPromise = undefined;
+        throw error;
+      });
+
+    return this.toolListPromise;
+  }
+
   async onModuleDestroy(): Promise<void> {
     this.shuttingDown = true;
 
@@ -33,6 +52,7 @@ export class McpDeviceClientService implements OnModuleDestroy {
 
     this.client = undefined;
     this.connectionPromise = undefined;
+    this.toolListPromise = undefined;
 
     if (client) {
       await client.close();

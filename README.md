@@ -29,8 +29,9 @@ service performs the approved business operation.
   spreading through the application.
 - A bounded, multi-round function-calling loop with explicit tool dispatch.
 - Read-only tools for device identity, latest telemetry, and recent events.
-- An assistant-side MCP client and read-only stdio server exposing deterministic
-  device, telemetry, and event services over protocol version `2026-07-28`.
+- An assistant-side MCP client that discovers the required READ contracts and a
+  read-only stdio server exposing deterministic device, telemetry, and event
+  services over protocol version `2026-07-28`.
 - Retrieval-augmented generation over an internal maintenance guide using
   Markdown-aware chunking, Gemini embeddings, an in-memory vector store, and
   cosine-similarity search.
@@ -66,6 +67,7 @@ User question
       |          +--> maintenance knowledge retrieval
       |               Markdown -> chunks -> embeddings -> vector search
       |
+      +--> MCP tools/list -> required READ policy -> Gemini tool adapter
       +--> MCP-backed READ executor -> stdio MCP server
                                       -> deterministic device / telemetry / event services
 
@@ -100,11 +102,13 @@ decisions, and trade-offs.
 ### Read-only investigation
 
 1. The user asks about a device.
-2. Gemini requests the device, telemetry, or event tools it needs.
-3. The application dispatches each read call through the MCP client to the
+2. The host discovers MCP tools, selects the required authorized READ
+   contracts, and adapts them into Gemini function declarations.
+3. Gemini requests the device, telemetry, or event tools it needs.
+4. The application dispatches each read call through the MCP client to the
    stdio MCP server, which validates it and invokes existing NestJS services.
-4. Structured results are returned to the same Gemini interaction.
-5. Gemini synthesizes a grounded answer within a bounded number of rounds.
+5. Structured results are returned to the same Gemini interaction.
+6. Gemini synthesizes a grounded answer within a bounded number of rounds.
 
 ### Tools plus maintenance knowledge
 
@@ -253,7 +257,7 @@ API usage may incur cost.
 |   |-- ai/
 |   |   |-- actions/          # Pending actions and deterministic approval
 |   |   |-- gemini/           # SDK boundary and normalized interaction types
-|   |   |-- mcp/              # Assistant-side MCP client and lifecycle
+|   |   |-- mcp/              # MCP client lifecycle, discovery, Gemini adaptation
 |   |   |-- observability/    # Structured AI interaction traces
 |   |   |-- rag/              # Chunking, embeddings, vector search, RAG answer flow
 |   |   |-- tools/            # Tool schemas, executors, and dispatcher
@@ -281,6 +285,9 @@ API usage may incur cost.
 - Device READ tools use MCP stdio to reach deterministic NestJS services;
   retrieval and action-proposal capabilities retain their existing in-process
   boundaries.
+- The MCP server is the source of READ names, descriptions, and input schemas;
+  the host's required-tool policy keeps discovery separate from authorization,
+  and a small provider-specific adapter converts selected contracts for Gemini.
 - Gemini SDK details are isolated behind a small provider-specific boundary;
   there is no premature provider-neutral abstraction.
 - RAG supplies relatively static internal knowledge, while tools supply current

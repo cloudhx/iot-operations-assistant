@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DEVICE_ASSISTANT_SYSTEM_INSTRUCTION } from './device-assistant.prompt.js';
 import { GeminiClientService } from './gemini/gemini-client.service.js';
 import { GeminiFunctionResult, GeminiTurn } from './gemini/gemini.types.js';
+import { McpGeminiToolAdapterService } from './mcp/mcp-gemini-tool-adapter.service.js';
 import {
   AI_INTERACTION_OUTCOMES,
   AiFailureStage,
@@ -13,13 +14,11 @@ import {
   DeviceAssistantToolDispatcherService,
   DispatchedToolExecution,
 } from './tools/device-assistant-tool-dispatcher.service.js';
-import { DEVICE_TOOLS } from './tools/device-tools.js';
 import { SEARCH_MAINTENANCE_KNOWLEDGE_TOOL } from './tools/maintenance-knowledge.tool.js';
 import { CREATE_MAINTENANCE_WORK_ORDER_TOOL } from './tools/maintenance-work-order.tool.js';
 
 const MAX_TOOL_ROUNDS = 5;
-const DEVICE_ASSISTANT_TOOLS = [
-  ...DEVICE_TOOLS,
+const STATIC_ASSISTANT_TOOLS = [
   SEARCH_MAINTENANCE_KNOWLEDGE_TOOL,
   CREATE_MAINTENANCE_WORK_ORDER_TOOL,
 ];
@@ -30,6 +29,7 @@ export class DeviceAssistantService {
 
   constructor(
     private readonly geminiClient: GeminiClientService,
+    private readonly mcpToolAdapter: McpGeminiToolAdapterService,
     private readonly toolDispatcher: DeviceAssistantToolDispatcherService,
     private readonly traceService: AiTraceService,
   ) {}
@@ -43,10 +43,17 @@ export class DeviceAssistantService {
     let failureStage: AiFailureStage = 'MODEL_CALL';
 
     try {
+      failureStage = 'ORCHESTRATION';
+      const tools = [
+        ...(await this.mcpToolAdapter.getGeminiDeviceTools()),
+        ...STATIC_ASSISTANT_TOOLS,
+      ];
+
+      failureStage = 'MODEL_CALL';
       let turn = await this.executeModelCall(traceId, 1, () =>
         this.geminiClient.startInteraction(
           input,
-          DEVICE_ASSISTANT_TOOLS,
+          tools,
           DEVICE_ASSISTANT_SYSTEM_INSTRUCTION,
         ),
       );
@@ -120,7 +127,7 @@ export class DeviceAssistantService {
           this.geminiClient.continueWithFunctionResults(
             turn.id,
             functionResults,
-            DEVICE_ASSISTANT_TOOLS,
+            tools,
             DEVICE_ASSISTANT_SYSTEM_INSTRUCTION,
           ),
         );

@@ -6,6 +6,7 @@ import { PendingActionsService } from './actions/pending-actions.service.js';
 import { DeviceAssistantService } from './device-assistant.service.js';
 import { GeminiClientService } from './gemini/gemini-client.service.js';
 import { McpDeviceClientService } from './mcp/mcp-device-client.service.js';
+import { McpGeminiToolAdapterService } from './mcp/mcp-gemini-tool-adapter.service.js';
 import { AiTraceService } from './observability/ai-trace.service.js';
 import { DocumentRetrievalService } from './rag/document-retrieval.service.js';
 import { GeminiEmbeddingService } from './rag/gemini-embedding.service.js';
@@ -22,6 +23,7 @@ import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-wor
     DeviceAssistantService,
     GeminiClientService,
     McpDeviceClientService,
+    McpGeminiToolAdapterService,
     DeviceAssistantToolDispatcherService,
     DeviceToolExecutorService,
     MaintenanceKnowledgeToolExecutorService,

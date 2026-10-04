@@ -9,6 +9,7 @@ export interface GeminiFunctionTool {
       {
         type: 'string' | 'integer';
         description: string;
+        minLength?: number;
         minimum?: number;
         maximum?: number;
       }
