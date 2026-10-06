@@ -118,7 +118,7 @@ describe.sequential('Device Assistant structured trace evaluation', () => {
 
   async function runAndLog(question: string, caseId: string): Promise<void> {
     Logger.log(`Question: ${question}`, caseId);
-    const answer = await assistant.askDeviceAssistant(question);
+    const { answer } = await assistant.askDeviceAssistant(question);
     Logger.log(`Final answer:\n${answer}`, caseId);
     Logger.log(
       `Structured trace:\n${JSON.stringify(requireLatestTrace(), null, 2)}`,

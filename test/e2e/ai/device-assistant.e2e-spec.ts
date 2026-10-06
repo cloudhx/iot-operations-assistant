@@ -25,8 +25,10 @@ describe('Device Assistant integration', () => {
 
       logger.log(`Input prompt: ${TEST_PROMPT}`);
 
-      const answer = await deviceAssistant.askDeviceAssistant(TEST_PROMPT);
+      const { answer, interactionId } =
+        await deviceAssistant.askDeviceAssistant(TEST_PROMPT);
 
+      logger.log(`Interaction ID: ${interactionId}`);
       logger.log('Final Gemini answer:');
       console.log(answer);
 

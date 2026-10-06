@@ -32,7 +32,7 @@ describe('Device Assistant evaluation baseline', () => {
       logger.log(`Prompt: ${evaluationCase.prompt}`);
       logger.log('='.repeat(72));
 
-      const answer = await deviceAssistant.askDeviceAssistant(
+      const { answer } = await deviceAssistant.askDeviceAssistant(
         evaluationCase.prompt,
       );
 

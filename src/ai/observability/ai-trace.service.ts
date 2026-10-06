@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import {
   AI_INTERACTION_OUTCOMES,
@@ -14,11 +15,9 @@ import {
 export class AiTraceService {
   private readonly traces = new Map<string, AiInteractionTrace>();
   private latestInteractionId?: string;
-  private nextId = 1;
 
   startInteraction(input: string): string {
-    const interactionId = `ai-interaction-${String(this.nextId).padStart(3, '0')}`;
-    this.nextId += 1;
+    const interactionId = `ai-${randomUUID()}`;
 
     this.traces.set(interactionId, {
       interactionId,

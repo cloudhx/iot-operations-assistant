@@ -61,6 +61,8 @@ An LLM function call is a request to the application, not execution authority.
 | Component | Responsibility | Explicitly does not own |
 | --- | --- | --- |
 | `DeviceAssistantService` | Application orchestration, bounded model/tool rounds, final outcome | Device business logic, SDK response parsing, approval execution |
+| Assistant HTTP adapter | Validate one request, invoke the assistant, and return its correlated result | AI orchestration, trace lookup, or internal error inspection |
+| Assistant exception filter | Log correlated diagnostics and map interaction failures to a sanitized HTTP response | Provider/tool recovery or generic error handling |
 | `GeminiClientService` | Google GenAI SDK lifecycle and normalized turns/function calls | IoT policy, tool business logic, generic provider abstraction |
 | Assistant system instruction | Model behavior, grounding, evidence-source distinctions | Deterministic enforcement or authorization |
 | Tool definitions | Static retrieval/action contracts plus MCP-discovered READ contracts | Service implementation details |
@@ -89,6 +91,22 @@ fact lookup from retrieval and from a request that could eventually lead to a
 side effect.
 
 ## Execution flows
+
+### 0. HTTP application boundary
+
+```text
+POST /ai/device-assistant
+  -> global DTO validation rejects malformed input before AI execution
+  -> controller invokes DeviceAssistantService
+  -> service starts the interaction trace and uses that ID as correlation
+  -> success returns { interactionId, answer }
+  -> internal failure records FAILED, then carries the same ID to the filter
+  -> filter logs internal diagnostics and returns a sanitized correlated 500
+```
+
+The HTTP layer does not inspect `AiTraceService`; trace storage is observability
+state rather than an application error channel. Blank input is also rejected in
+the service so non-HTTP callers retain the same defensive boundary.
 
 ### 1. Read-only tool flow
 
@@ -314,6 +332,16 @@ system, or open-ended retry loop.
 
 **Trade-off:** the architecture favors inspectability and control over autonomy.
 
+### 17. HTTP errors preserve correlation without exposing internals
+
+Successful assistant results and failed-interaction errors carry the exact ID
+created when the trace starts. The HTTP filter uses that ID for both operational
+logging and the public response, while provider, transport, tool, stack, and
+filesystem details remain server-side.
+
+**Trade-off:** callers receive a stable high-level failure rather than a detailed
+diagnosis; operators must use the interaction ID to correlate logs and traces.
+
 ## RAG mechanics and evidence boundaries
 
 ### Ingestion time
@@ -424,7 +452,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Traces | In-memory structured records | Easy local inspection | Export to telemetry backend with retention and redaction |
 | Error detail | Minimal trace failures, stack in logs | Reduces trace data exposure | Formal logging classification and secure diagnostics |
 | Evaluation | Local live-model and deterministic assertions | Exposes model variability | Versioned datasets, CI gates, latency/cost quality bars |
-| API surface | Deterministic REST controllers only | AI flow remains focused on internals | Versioned AI API, DTO validation, rate limits |
+| API surface | Deterministic REST plus one validated, correlated assistant endpoint | Demonstrates a controlled AI application boundary | Authentication, versioning, rate limits, abuse controls |
 | Deployment | Local NestJS application | Application-level architecture is the current focus | Containerization, health checks, SLOs, runbooks |
 
 ## GenAI landscape coverage

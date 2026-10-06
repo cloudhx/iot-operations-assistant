@@ -39,7 +39,7 @@ describe.sequential('Device Assistant action approval evaluation', () => {
     const question = 'What is happening with vibration-sensor-001?';
 
     Logger.log(`Question: ${question}`, 'ACTION-001');
-    const answer = await assistant.askDeviceAssistant(question);
+    const { answer } = await assistant.askDeviceAssistant(question);
     Logger.log(`Final answer:\n${answer}`, 'ACTION-001');
 
     expect(answer.trim().length).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ describe.sequential('Device Assistant action approval evaluation', () => {
       'vibration-sensor-001 has a maintenance warning. Create a maintenance work order if appropriate.';
 
     Logger.log(`Question: ${question}`, 'ACTION-002');
-    const answer = await assistant.askDeviceAssistant(question);
+    const { answer } = await assistant.askDeviceAssistant(question);
     const newActions = pendingActions.findAll().slice(pendingBefore);
 
     Logger.log(`Final answer:\n${answer}`, 'ACTION-002');

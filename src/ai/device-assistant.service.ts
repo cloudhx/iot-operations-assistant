@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import {
+  DeviceAssistantInteractionError,
+  type DeviceAssistantResult,
+} from './device-assistant.contract.js';
 import { DEVICE_ASSISTANT_SYSTEM_INSTRUCTION } from './device-assistant.prompt.js';
 import { GeminiClientService } from './gemini/gemini-client.service.js';
 import { GeminiFunctionResult, GeminiTurn } from './gemini/gemini.types.js';
@@ -34,7 +38,7 @@ export class DeviceAssistantService {
     private readonly traceService: AiTraceService,
   ) {}
 
-  async askDeviceAssistant(input: string): Promise<string> {
+  async askDeviceAssistant(input: string): Promise<DeviceAssistantResult> {
     if (input.trim().length === 0) {
       throw new Error('Device assistant input must not be empty');
     }
@@ -154,10 +158,13 @@ export class DeviceAssistantService {
           : AI_INTERACTION_OUTCOMES.ANSWERED,
       );
 
-      return turn.outputText;
+      return {
+        interactionId: traceId,
+        answer: turn.outputText,
+      };
     } catch (error) {
       this.traceService.failInteraction(traceId, failureStage, error);
-      throw error;
+      throw new DeviceAssistantInteractionError(traceId, error);
     }
   }
 

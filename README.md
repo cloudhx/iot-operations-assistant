@@ -45,12 +45,17 @@ service performs the approved business operation.
   Gemini call.
 - Structured interaction traces and evaluation suites covering behavior,
   application state, and trace structure.
+- A validated HTTP assistant boundary with interaction correlation, sanitized
+  failure responses, and operational error logging.
 
 ## Architecture at a glance
 
 ```text
                               probabilistic reasoning
-User question
+POST /ai/device-assistant
+     |
+     v
+request validation -> HTTP adapter -> correlated/sanitized response
      |
      v
 +----------------------+        +----------------------+
@@ -222,9 +227,11 @@ Gemini-dependent providers are initialized without it. Do not commit the key.
 npm run start:dev
 ```
 
-The existing REST controllers expose deterministic device, telemetry, and event
-services. The AI capabilities are currently exercised through application-context
-tests and evaluation scripts rather than an AI HTTP controller.
+The REST application exposes deterministic device, telemetry, and event
+services plus `POST /ai/device-assistant`. The assistant endpoint validates the
+request and returns an answer with the same interaction ID used by its in-memory
+execution trace. Authentication, rate limiting, and durable tracing remain out
+of scope.
 
 ## Commands
 
@@ -236,6 +243,7 @@ tests and evaluation scripts rather than an AI HTTP controller.
 | `npm test` | Run all Vitest specs matched by the main config |
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
+| `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
 | `npm run ai:test` | Run the Device Assistant end-to-end invocation |
 | `npm run ai:evaluate` | Run the baseline Device Assistant evaluations |
 | `npm run rag:retrieve` | Inspect standalone RAG retrieval |
@@ -257,6 +265,7 @@ API usage may incur cost.
 |   |-- ai/
 |   |   |-- actions/          # Pending actions and deterministic approval
 |   |   |-- gemini/           # SDK boundary and normalized interaction types
+|   |   |-- http/             # Validated assistant HTTP adapter and failure mapping
 |   |   |-- mcp/              # MCP client lifecycle, discovery, Gemini adaptation
 |   |   |-- observability/    # Structured AI interaction traces
 |   |   |-- rag/              # Chunking, embeddings, vector search, RAG answer flow
@@ -305,11 +314,11 @@ The full rationale and trade-offs are documented in
 | Area | Current implementation | Production need |
 | --- | --- | --- |
 | Persistence | Mock data, in-memory vector index, actions, work orders, and traces | Durable stores, migrations, backup, and recovery |
-| Security | Environment API key; no AI/action API surface | Authentication, authorization, secrets management, tenant isolation |
+| Security | Environment API key; unauthenticated assistant endpoint; no approval API | Authentication, authorization, secrets management, tenant isolation |
 | Approval | Service-level human decision demonstrated in tests | Authenticated approval interface, audit actor, expiry, policy checks |
 | Reliability | Bounded loop and explicit errors | Timeouts, retry policy, circuit breaking, quotas, graceful degradation |
 | Transactions | In-process idempotent duplicate approval | Transactional state transition and distributed idempotency |
-| Observability | Structured in-memory traces and NestJS logs | Persistent trace export, redaction policy, metrics, alerting, correlation |
+| Observability | Correlated HTTP responses, structured in-memory traces, and NestJS logs | Persistent trace export, redaction policy, metrics, alerting |
 | RAG | One local synthetic document and in-memory embeddings | Ingestion lifecycle, access control, freshness, persistent vector store |
 | Evaluation | Local deterministic and manual/semi-manual suites | Curated regression dataset, CI gates, cost/latency targets, review process |
 | Operations | Local execution | Deployment, health checks, SLOs, runbooks, capacity and cost controls |

@@ -45,7 +45,7 @@ describe('Integrated Device Assistant evaluation', () => {
         evaluationCase.id,
       );
 
-      const answer = await deviceAssistant.askDeviceAssistant(
+      const { answer } = await deviceAssistant.askDeviceAssistant(
         evaluationCase.question,
       );
 
