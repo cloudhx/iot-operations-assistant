@@ -233,6 +233,14 @@ request and returns an answer with the same interaction ID used by its in-memory
 execution trace. Authentication, rate limiting, and durable tracing remain out
 of scope.
 
+### API documentation
+
+Run `npm run start:dev`, then open Swagger UI at
+<http://localhost:3000/docs> (default port). It documents the current AI HTTP
+application boundary, `POST /ai/device-assistant`, including request validation
+and correlated success/failure responses. The OpenAPI document is available at
+<http://localhost:3000/docs-json>.
+
 ## Commands
 
 | Command | Purpose |
@@ -244,6 +252,7 @@ of scope.
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
+| `npm run api:openapi:test` | Verify the published OpenAPI contract and Swagger UI mount |
 | `npm run ai:test` | Run the Device Assistant end-to-end invocation |
 | `npm run ai:evaluate` | Run the baseline Device Assistant evaluations |
 | `npm run rag:retrieve` | Inspect standalone RAG retrieval |

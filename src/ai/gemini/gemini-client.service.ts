@@ -8,7 +8,7 @@ import {
   GeminiTurn,
 } from './gemini.types.js';
 
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODEL = 'gemini-3.7-flash';
 
 @Injectable()
 export class GeminiClientService {
@@ -33,12 +33,14 @@ export class GeminiClientService {
     systemInstruction: string,
   ): Promise<GeminiTurn> {
     try {
+      this.logger.debug('Starting Gemini interaction');
       const interaction = await this.client.interactions.create({
         model: GEMINI_MODEL,
         input,
         tools,
         system_instruction: systemInstruction,
       });
+      this.logger.debug('Gemini interaction completed');
 
       return this.toGeminiTurn(interaction);
     } catch (error) {

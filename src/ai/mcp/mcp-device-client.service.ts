@@ -31,9 +31,14 @@ export class McpDeviceClientService implements OnModuleDestroy {
   async listTools(): Promise<readonly Tool[]> {
     const client = await this.getConnectedClient();
 
+    this.logger.debug('Listing MCP device tools');
+
     this.toolListPromise ??= client
       .listTools()
-      .then(({ tools }) => tools)
+      .then(({ tools }) => {
+        this.logger.debug(`Listed ${tools.length} MCP device tools`);
+        return tools;
+      })
       .catch((error: unknown) => {
         this.toolListPromise = undefined;
         throw error;

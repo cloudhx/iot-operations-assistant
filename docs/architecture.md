@@ -342,6 +342,19 @@ filesystem details remain server-side.
 **Trade-off:** callers receive a stable high-level failure rather than a detailed
 diagnosis; operators must use the interaction ID to correlate logs and traces.
 
+### 18. OpenAPI describes transport contracts
+
+The assistant HTTP contract is documented through Nest Swagger metadata and
+published as OpenAPI with Swagger UI. Bootstrap configures this documentation;
+global request validation remains registered through `APP_PIPE` in `AppModule`.
+`DeviceAssistantResult` stays an application result, independent of HTTP.
+Response DTOs provide runtime schema metadata for the success response and the
+sanitized failure response, with explicit mapping at the controller boundary.
+
+**Trade-off:** transport DTOs are added where OpenAPI requires runtime schema
+metadata; deterministic controllers and application/domain types are not
+normalized into response DTOs for symmetry.
+
 ## RAG mechanics and evidence boundaries
 
 ### Ingestion time
