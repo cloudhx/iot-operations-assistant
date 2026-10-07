@@ -112,4 +112,63 @@ describe('Device assistant OpenAPI contract', () => {
       .expect('Content-Type', /html/);
     expect(askDeviceAssistant).not.toHaveBeenCalled();
   });
+
+  it('documents pending-action review and decisions without editable arguments', async () => {
+    const response = await request(application.getHttpServer())
+      .get('/docs-json')
+      .expect(200);
+    const { paths, components } = response.body;
+    const success = {
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/PendingActionResponseDto' },
+        },
+      },
+    };
+    const failure = {
+      content: {
+        'application/json': {
+          schema: {
+            $ref: '#/components/schemas/PendingActionErrorResponseDto',
+          },
+        },
+      },
+    };
+    expect(paths['/ai/pending-actions/{id}'].get.responses).toMatchObject({
+      '200': success,
+      '404': failure,
+    });
+    for (const decision of ['approve', 'reject']) {
+      expect(paths[`/ai/pending-actions/{id}/${decision}`].post).toMatchObject({
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', additionalProperties: false },
+            },
+          },
+        },
+        responses: {
+          '200': success,
+          '400': { description: expect.any(String) },
+          '404': failure,
+          '409': failure,
+        },
+      });
+    }
+    expect(components.schemas.PendingActionResponseDto).toMatchObject({
+      properties: {
+        createdAt: { type: 'string', format: 'date-time' },
+        arguments: { $ref: '#/components/schemas/PendingActionArgumentsDto' },
+        result: {
+          allOf: expect.arrayContaining([
+            { $ref: '#/components/schemas/PendingActionWorkOrderResultDto' },
+          ]),
+        },
+      },
+    });
+    expect(
+      components.schemas.PendingActionWorkOrderResultDto.properties.createdAt,
+    ).toMatchObject({ type: 'string', format: 'date-time' });
+    expect(askDeviceAssistant).not.toHaveBeenCalled();
+  });
 });

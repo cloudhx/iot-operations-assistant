@@ -160,7 +160,8 @@ User explicitly asks for a maintenance work order
   -> application validates deviceId, reason, and optional component
   -> PendingActionsService freezes a copied argument payload
   -> assistant reports pendingActionId; trace outcome = APPROVAL_REQUIRED
-  -> human approves or rejects by pending action ID
+  -> external human caller reviews GET /ai/pending-actions/:id
+  -> human approves or rejects by POST /ai/pending-actions/:id/approve or /reject
 
 Reject:
   -> pending action becomes REJECTED
@@ -180,6 +181,19 @@ Duplicate approval:
 The frozen payload prevents approval drift: the human approves the same arguments
 that will be executed. In a production system this boundary would be backed by
 durable storage and a transaction.
+
+The HTTP controller invokes the existing services and maps snapshots to transport
+DTOs with ISO timestamps and a typed work-order result. Decision requests cannot
+replace execution arguments. Application not-found/state-conflict errors are
+mapped by a controller-scoped filter to sanitized 404/409 responses; successful
+decisions and duplicate approval return 200. Reads and decisions return copies
+so callers cannot mutate internal action state or replace stored arguments.
+
+These endpoints currently have no authentication, authorization, or actor
+identity. A future authenticated adapter can pass a verified actor to the
+application decision methods without coupling them to Google/OIDC. No anonymous
+actor placeholder is stored. Pending-action IDs and idempotency remain local to
+the single-process prototype and must not be treated as durable references.
 
 ## Design decisions
 
@@ -454,7 +468,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Work orders | In-memory service | Makes side effects visible without infrastructure | Durable transactional store and external integration |
 | Pending actions | In-memory map and process-local IDs | Demonstrates lifecycle and frozen payload | Durable state machine, expiry, actors, audit history |
 | Idempotency | Return stored result for completed action | Demonstrates duplicate-approval semantics | Transactional idempotency key across workers |
-| Authorization | No exposed approval endpoint/UI | Approval boundary is tested internally | AuthN/AuthZ, separation of duties, tenant policy |
+| Authorization | Unauthenticated HTTP review/approve/reject endpoints | Prototype verifies the deterministic decision boundary | AuthN/AuthZ, actor identity, separation of duties, tenant policy |
 | Secrets | `GEMINI_API_KEY` environment variable | Minimal local configuration | Managed secret store, rotation, least privilege |
 | Model reliability | Explicit errors and bounded loop | Keeps behavior observable | Timeouts, retry budget, circuit breaker, fallback policy |
 | Cost control | Fixed small data and bounded rounds | Keeps API usage bounded during local evaluation | Token budgets, quotas, caching, cost telemetry |
@@ -465,7 +479,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Traces | In-memory structured records | Easy local inspection | Export to telemetry backend with retention and redaction |
 | Error detail | Minimal trace failures, stack in logs | Reduces trace data exposure | Formal logging classification and secure diagnostics |
 | Evaluation | Local live-model and deterministic assertions | Exposes model variability | Versioned datasets, CI gates, latency/cost quality bars |
-| API surface | Deterministic REST plus one validated, correlated assistant endpoint | Demonstrates a controlled AI application boundary | Authentication, versioning, rate limits, abuse controls |
+| API surface | Deterministic REST, correlated assistant requests, and pending-action review/decisions | Demonstrates AI and deterministic approval boundaries | Authentication, versioning, rate limits, abuse controls |
 | Deployment | Local NestJS application | Application-level architecture is the current focus | Containerization, health checks, SLOs, runbooks |
 
 ## GenAI landscape coverage

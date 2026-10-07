@@ -237,9 +237,32 @@ of scope.
 
 Run `npm run start:dev`, then open Swagger UI at
 <http://localhost:3000/docs> (default port). It documents the current AI HTTP
-application boundary, `POST /ai/device-assistant`, including request validation
-and correlated success/failure responses. The OpenAPI document is available at
+application boundaries, including `POST /ai/device-assistant` and pending-action
+review/approval/rejection. The OpenAPI document is available at
 <http://localhost:3000/docs-json>.
+
+### Review and decide on a proposed action
+
+Use the action ID reported by the assistant to review the stored proposal:
+
+```bash
+curl http://localhost:3000/ai/pending-actions/pending-action-001
+curl -X POST http://localhost:3000/ai/pending-actions/pending-action-001/approve
+# Or reject instead of approving:
+curl -X POST http://localhost:3000/ai/pending-actions/pending-action-001/reject
+```
+
+Decisions accept no replacement arguments. Approval executes the frozen proposal
+without another Gemini call and returns the completed action and work-order
+result. Repeated approval of a completed action returns the same result without
+another side effect. Unknown IDs return 404; invalid state transitions return
+409. Requests containing decision properties return 400. Timestamps are ISO
+strings, and `result` is present only after completion.
+
+This is an unauthenticated prototype: authentication, authorization, and actor
+identity are the next security phase. Actions, IDs, and duplicate-approval
+idempotency are process-local and are not durable across restarts or shared
+across instances. The workflow is not production-secure.
 
 ## Commands
 
@@ -252,6 +275,7 @@ and correlated success/failure responses. The OpenAPI document is available at
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
+| `npm run ai:approval:http:test` | Verify pending-action HTTP decisions with real services |
 | `npm run api:openapi:test` | Verify the published OpenAPI contract and Swagger UI mount |
 | `npm run ai:test` | Run the Device Assistant end-to-end invocation |
 | `npm run ai:evaluate` | Run the baseline Device Assistant evaluations |
@@ -323,8 +347,8 @@ The full rationale and trade-offs are documented in
 | Area | Current implementation | Production need |
 | --- | --- | --- |
 | Persistence | Mock data, in-memory vector index, actions, work orders, and traces | Durable stores, migrations, backup, and recovery |
-| Security | Environment API key; unauthenticated assistant endpoint; no approval API | Authentication, authorization, secrets management, tenant isolation |
-| Approval | Service-level human decision demonstrated in tests | Authenticated approval interface, audit actor, expiry, policy checks |
+| Security | Environment API key; unauthenticated assistant and pending-action endpoints | Authentication, authorization, secrets management, tenant isolation |
+| Approval | HTTP review/decision boundary with frozen execution payload | Authenticated approval interface, audit actor, expiry, policy checks |
 | Reliability | Bounded loop and explicit errors | Timeouts, retry policy, circuit breaking, quotas, graceful degradation |
 | Transactions | In-process idempotent duplicate approval | Transactional state transition and distributed idempotency |
 | Observability | Correlated HTTP responses, structured in-memory traces, and NestJS logs | Persistent trace export, redaction policy, metrics, alerting |

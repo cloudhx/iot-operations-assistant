@@ -1,4 +1,7 @@
-import type { CreateMaintenanceWorkOrderInput } from '../../maintenance-work-orders/domain/maintenance-work-order.model.js';
+import type {
+  CreateMaintenanceWorkOrderInput,
+  MaintenanceWorkOrder,
+} from '../../maintenance-work-orders/domain/maintenance-work-order.model.js';
 
 export const PENDING_ACTION_STATUSES = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
@@ -16,7 +19,7 @@ export interface CreateMaintenanceWorkOrderPendingAction {
   arguments: Readonly<CreateMaintenanceWorkOrderInput>;
   status: PendingActionStatus;
   createdAt: Date;
-  result?: unknown;
+  result?: MaintenanceWorkOrder;
 }
 
 export type PendingAction = CreateMaintenanceWorkOrderPendingAction;

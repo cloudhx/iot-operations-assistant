@@ -7,6 +7,8 @@ import { DeviceAssistantService } from './device-assistant.service.js';
 import { GeminiClientService } from './gemini/gemini-client.service.js';
 import { DeviceAssistantController } from './http/device-assistant.controller.js';
 import { DeviceAssistantExceptionFilter } from './http/device-assistant-exception.filter.js';
+import { PendingActionsController } from './http/pending-actions.controller.js';
+import { PendingActionExceptionFilter } from './http/pending-action-exception.filter.js';
 import { McpDeviceClientService } from './mcp/mcp-device-client.service.js';
 import { McpGeminiToolAdapterService } from './mcp/mcp-gemini-tool-adapter.service.js';
 import { AiTraceService } from './observability/ai-trace.service.js';
@@ -21,7 +23,7 @@ import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-wor
 
 @Module({
   imports: [MaintenanceWorkOrdersModule],
-  controllers: [DeviceAssistantController],
+  controllers: [DeviceAssistantController, PendingActionsController],
   providers: [
     DeviceAssistantService,
     GeminiClientService,
@@ -39,6 +41,7 @@ import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-wor
     GeminiEmbeddingService,
     InMemoryVectorStoreService,
     DeviceAssistantExceptionFilter,
+    PendingActionExceptionFilter,
   ],
   exports: [
     DeviceAssistantService,

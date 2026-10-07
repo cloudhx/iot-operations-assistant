@@ -1,9 +1,17 @@
 import { Injectable } from '@nestjs/common';
 
-import type { CreateMaintenanceWorkOrderInput } from '../../maintenance-work-orders/domain/maintenance-work-order.model.js';
+import type {
+  CreateMaintenanceWorkOrderInput,
+  MaintenanceWorkOrder,
+} from '../../maintenance-work-orders/domain/maintenance-work-order.model.js';
+import {
+  PendingActionNotFoundError,
+  PendingActionStateConflictError,
+} from './pending-action.errors.js';
 import {
   PENDING_ACTION_STATUSES,
   PendingAction,
+  PendingActionStatus,
 } from './pending-action.model.js';
 
 @Injectable()
@@ -28,15 +36,16 @@ export class PendingActionsService {
     };
 
     this.actions.set(id, action);
-    return action;
+    return this.snapshot(action);
   }
 
   findById(id: string): PendingAction | undefined {
-    return this.actions.get(id);
+    const action = this.actions.get(id);
+    return action ? this.snapshot(action) : undefined;
   }
 
   findAll(): PendingAction[] {
-    return [...this.actions.values()];
+    return [...this.actions.values()].map((action) => this.snapshot(action));
   }
 
   count(): number {
@@ -47,35 +56,42 @@ export class PendingActionsService {
     const action = this.requireAction(id);
     this.requireStatus(action, PENDING_ACTION_STATUSES.PENDING_APPROVAL);
     action.status = PENDING_ACTION_STATUSES.APPROVED;
-    return action;
+    return this.snapshot(action);
   }
 
-  markCompleted(id: string, result: unknown): PendingAction {
+  markCompleted(id: string, result: MaintenanceWorkOrder): PendingAction {
     const action = this.requireAction(id);
     this.requireStatus(action, PENDING_ACTION_STATUSES.APPROVED);
     action.status = PENDING_ACTION_STATUSES.COMPLETED;
-    action.result = result;
-    return action;
+    action.result = structuredClone(result);
+    return this.snapshot(action);
   }
 
   markRejected(id: string): PendingAction {
     const action = this.requireAction(id);
     this.requireStatus(action, PENDING_ACTION_STATUSES.PENDING_APPROVAL);
     action.status = PENDING_ACTION_STATUSES.REJECTED;
-    return action;
+    return this.snapshot(action);
   }
 
   private requireAction(id: string): PendingAction {
     const action = this.actions.get(id);
-    if (!action) throw new Error(`Pending action \"${id}\" was not found.`);
+    if (!action) throw new PendingActionNotFoundError(id);
     return action;
   }
 
-  private requireStatus(action: PendingAction, expected: string): void {
+  private requireStatus(
+    action: PendingAction,
+    expected: PendingActionStatus,
+  ): void {
     if (action.status !== expected) {
-      throw new Error(
-        `Pending action \"${action.id}\" has status ${action.status}; expected ${expected}.`,
-      );
+      throw new PendingActionStateConflictError(action.id, action.status);
     }
+  }
+
+  private snapshot(action: PendingAction): PendingAction {
+    const copy = structuredClone(action);
+    Object.freeze(copy.arguments);
+    return copy;
   }
 }

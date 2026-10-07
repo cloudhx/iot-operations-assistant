@@ -20,6 +20,7 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "mcp:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/mcp/mcp-stdio.integration-spec.ts --reporter=verbose --no-file-parallelism",
     "ai:http:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/ai/http/device-assistant-http.integration-spec.ts --reporter=verbose --no-file-parallelism",
+    "ai:approval:http:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/ai/http/pending-actions-http.integration-spec.ts --reporter=verbose --no-file-parallelism",
     "api:openapi:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/openapi/openapi.integration-spec.ts --reporter=verbose --no-file-parallelism",
     "ai:test": "npm run build && node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/e2e/ai/device-assistant.e2e-spec.ts --reporter=verbose",
     "ai:evaluate": "npm run build && node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.evaluation-spec.ts --reporter=verbose --no-file-parallelism",

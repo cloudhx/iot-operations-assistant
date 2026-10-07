@@ -8,6 +8,7 @@ import { CREATE_MAINTENANCE_WORK_ORDER_TOOL_NAME } from '../tools/maintenance-wo
 import { PendingActionApprovalService } from './pending-action-approval.service.js';
 import { PENDING_ACTION_STATUSES } from './pending-action.model.js';
 import { PendingActionsService } from './pending-actions.service.js';
+import { PendingActionStateConflictError } from './pending-action.errors.js';
 
 function createFixture() {
   const devices = new DevicesService();
@@ -60,10 +61,23 @@ describe('PendingActionApprovalService', () => {
     const { actionId } = toolResult.result as { actionId: string };
 
     const first = fixture.approval.approvePendingAction(actionId);
+    const storedResult = structuredClone(first.result);
+    first.result.reason = 'Caller mutation';
+    first.result.createdAt.setFullYear(2000);
+    first.action.arguments = {
+      ...first.action.arguments,
+      reason: 'Replacement',
+    };
     const second = fixture.approval.approvePendingAction(actionId);
 
     expect(second.status).toBe('already_completed');
     expect(second.result.id).toBe(first.result.id);
+    expect(second.result).toEqual(storedResult);
+    expect(fixture.pendingActions.findById(actionId)?.result).toEqual(
+      storedResult,
+    );
+    expect(second.action.arguments.reason).toBe(storedResult.reason);
+    expect(fixture.workOrders.findById(storedResult.id)).toEqual(storedResult);
     expect(fixture.workOrders.count()).toBe(1);
   });
 
@@ -75,7 +89,7 @@ describe('PendingActionApprovalService', () => {
     fixture.approval.rejectPendingAction(actionId);
 
     expect(() => fixture.approval.approvePendingAction(actionId)).toThrow(
-      /cannot be approved from status REJECTED/,
+      PendingActionStateConflictError,
     );
     expect(fixture.workOrders.count()).toBe(0);
   });

@@ -8,6 +8,10 @@ import {
   PendingAction,
 } from './pending-action.model.js';
 import { PendingActionsService } from './pending-actions.service.js';
+import {
+  PendingActionNotFoundError,
+  PendingActionStateConflictError,
+} from './pending-action.errors.js';
 
 export type ApprovePendingActionResult =
   | { status: 'completed'; action: PendingAction; result: MaintenanceWorkOrder }
@@ -28,24 +32,26 @@ export class PendingActionApprovalService {
 
   approvePendingAction(actionId: string): ApprovePendingActionResult {
     const existing = this.pendingActions.findById(actionId);
-    if (!existing)
-      throw new Error(`Pending action \"${actionId}\" was not found.`);
+    if (!existing) throw new PendingActionNotFoundError(actionId);
 
     if (existing.status === PENDING_ACTION_STATUSES.COMPLETED) {
+      if (!existing.result) {
+        throw new Error(
+          `Completed pending action "${actionId}" has no result.`,
+        );
+      }
       this.logger.log(
         `Pending action \"${actionId}\" was already completed; returning its existing result`,
       );
       return {
         status: 'already_completed',
         action: existing,
-        result: existing.result as MaintenanceWorkOrder,
+        result: existing.result,
       };
     }
 
     if (existing.status !== PENDING_ACTION_STATUSES.PENDING_APPROVAL) {
-      throw new Error(
-        `Pending action \"${actionId}\" cannot be approved from status ${existing.status}.`,
-      );
+      throw new PendingActionStateConflictError(actionId, existing.status);
     }
 
     const approved = this.pendingActions.markApproved(actionId);
@@ -64,11 +70,18 @@ export class PendingActionApprovalService {
     }
 
     const completed = this.pendingActions.markCompleted(actionId, result);
+    if (!completed.result) {
+      throw new Error(`Completed pending action "${actionId}" has no result.`);
+    }
     this.logger.log(
       `Completed approved action \"${actionId}\" as work order \"${result.id}\"`,
     );
 
-    return { status: 'completed', action: completed, result };
+    return {
+      status: 'completed',
+      action: completed,
+      result: completed.result,
+    };
   }
 
   rejectPendingAction(actionId: string): PendingAction {
