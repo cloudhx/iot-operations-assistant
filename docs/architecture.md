@@ -190,11 +190,20 @@ mapped by a controller-scoped filter to sanitized 404/409 responses; successful
 decisions and duplicate approval return 200. Reads and decisions return copies
 so callers cannot mutate internal action state or replace stored arguments.
 
-These endpoints currently have no authentication, authorization, or actor
-identity. A future authenticated adapter can pass a verified actor to the
-application decision methods without coupling them to Google/OIDC. No anonymous
-actor placeholder is stored. Pending-action IDs and idempotency remain local to
-the single-process prototype and must not be treated as durable references.
+`POST /ai/device-assistant` and `GET /ai/pending-actions/:id` remain public.
+POST approve/reject require a protected local session established through Google
+OIDC; missing or invalid sessions return 401 without redirecting. `AuthGuard`
+establishes a provider-neutral `AuthenticatedPrincipal`, which the controller
+passes into the application decision service. Pending actions record
+`approvedBy`/`rejectedBy` and the corresponding decision timestamp; duplicate
+approval preserves the original actor and timestamp. The application decision
+service remains independent of Google/OIDC-specific types.
+
+Authentication establishes actor identity only; no authorization policy is
+implemented. Actor records are currently visible through the public review
+endpoint. Pending-action IDs and idempotency remain local to the single-process
+prototype and must not be treated as durable references. See the
+[authentication guide](google-oidc-authentication.md) for session and login details.
 
 ## Design decisions
 
@@ -467,10 +476,11 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | --- | --- | --- | --- |
 | Domain data | Deterministic in-memory mock records | Repeatable evaluation scenarios | Database-backed repositories and migrations |
 | Work orders | In-memory service | Makes side effects visible without infrastructure | Durable transactional store and external integration |
-| Pending actions | In-memory map and process-local IDs | Demonstrates lifecycle and frozen payload | Durable state machine, expiry, actors, audit history |
+| Pending actions | In-memory map, process-local IDs, and recorded actors/decision timestamps | Demonstrates lifecycle and frozen payload | Durable workflow state, expiry, audit history |
 | Idempotency | Return stored result for completed action | Demonstrates duplicate-approval semantics | Transactional idempotency key across workers |
-| Authorization | Unauthenticated HTTP review/approve/reject endpoints | Prototype verifies the deterministic decision boundary | AuthN/AuthZ, actor identity, separation of duties, tenant policy |
-| Secrets | `GEMINI_API_KEY` environment variable | Minimal local configuration | Managed secret store, rotation, least privilege |
+| Authentication | Google OIDC-backed local sessions protect decision endpoints; assistant and review remain public | Demonstrates verified actor identity at the HTTP boundary | Production identity/session hardening and distributed session/revocation strategy |
+| Authorization | Authenticated actor identity only; no decision policy; actor records visible in public review | AuthN and AuthZ remain separate responsibilities | RBAC/policy, tenant/ownership rules, and separation of duties as justified |
+| Secrets | Gemini/Google OIDC credentials and session secret in environment variables | Minimal local configuration | Managed secret store, rotation, least privilege |
 | Model reliability | Explicit errors and bounded loop | Keeps behavior observable | Timeouts, retry budget, circuit breaker, fallback policy |
 | Cost control | Fixed small data and bounded rounds | Keeps API usage bounded during local evaluation | Token budgets, quotas, caching, cost telemetry |
 | RAG corpus | One synthetic local Markdown file | Retrieval is manually inspectable | Governed ingestion, ACLs, versioning, freshness checks |
@@ -480,7 +490,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Traces | In-memory structured records | Easy local inspection | Export to telemetry backend with retention and redaction |
 | Error detail | Minimal trace failures, stack in logs | Reduces trace data exposure | Formal logging classification and secure diagnostics |
 | Evaluation | Local live-model and deterministic assertions | Exposes model variability | Versioned datasets, CI gates, latency/cost quality bars |
-| API surface | Deterministic REST, correlated assistant requests, and pending-action review/decisions | Demonstrates AI and deterministic approval boundaries | Authentication, versioning, rate limits, abuse controls |
+| API surface | Deterministic REST, public assistant/review, and authenticated decisions | Demonstrates AI and deterministic approval boundaries | Authorization policy, versioning, rate limits, abuse controls |
 | Deployment | Local NestJS application | Application-level architecture is the current focus | Containerization, health checks, SLOs, runbooks |
 
 ## GenAI landscape coverage

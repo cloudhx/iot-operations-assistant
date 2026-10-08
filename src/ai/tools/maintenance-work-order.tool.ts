@@ -7,7 +7,7 @@ export const CREATE_MAINTENANCE_WORK_ORDER_TOOL: GeminiFunctionTool = {
   type: 'function',
   name: CREATE_MAINTENANCE_WORK_ORDER_TOOL_NAME,
   description:
-  'Proposes a maintenance work order for a connected device when supported by the available evidence. Human approval is required before execution.',
+    'Proposes a maintenance work order for a connected device when supported by the available evidence. Human approval is required before execution.',
   parameters: {
     type: 'object',
     additionalProperties: false,

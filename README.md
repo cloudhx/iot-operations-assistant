@@ -43,6 +43,8 @@ service performs the approved business operation.
   `PendingAction` proposal but cannot execute the work order.
 - Human approval followed by deterministic, idempotent execution without another
   Gemini call.
+- Google OIDC login, protected stateless local sessions, authenticated decisions
+  with actor attribution, and local application logout.
 - Structured interaction traces and evaluation suites covering behavior,
   application state, and trace structure.
 - A validated HTTP assistant boundary with interaction correlation, sanitized
@@ -193,7 +195,7 @@ stored.
 | RAG retrieval | Markdown chunking, Gemini embeddings, cosine similarity | Ranked chunk metadata | One local document; in-memory index |
 | Grounded generation | System instructions and explicit evidence boundaries | Evaluation cases for unsupported inference | Prompt constraints are not a formal guarantee |
 | Combined orchestration | Read, retrieval, and proposal tools | Tool-category and trace assertions | Model chooses capabilities probabilistically |
-| Human-in-the-loop action | Frozen `PendingAction` and approval service | No execution before approval | In-memory state; no authenticated approval UI/API |
+| Human-in-the-loop action | Frozen `PendingAction` and approval service | No execution before approval | In-memory state; no authorization policy or approval UI |
 | Idempotent approval | Completed action returns its existing result | State-based tests | No distributed idempotency key or transaction |
 | Observability | Structured in-memory interaction trace | Trace evaluation suite | No persistent/exported telemetry or dashboards |
 | Evaluation | Unit, integration, end-to-end, and evaluation specs | Behavior, state, and trace assertions | No CI quality gate or automated semantic judge |
@@ -230,8 +232,9 @@ npm run start:dev
 The REST application exposes deterministic device, telemetry, and event
 services plus `POST /ai/device-assistant`. The assistant endpoint validates the
 request and returns an answer with the same interaction ID used by its in-memory
-execution trace. Authentication, rate limiting, and durable tracing remain out
-of scope.
+execution trace. The assistant endpoint remains public. Google OIDC and a
+protected stateless cookie provide local session authentication for approve/reject;
+authorization policy, rate limiting, and durable tracing remain production gaps.
 
 ### API documentation
 
@@ -243,26 +246,32 @@ review/approval/rejection. The OpenAPI document is available at
 
 ### Review and decide on a proposed action
 
-Use the action ID reported by the assistant to review the stored proposal:
+Review GET remains public; approve/reject require an authenticated local session.
+The decision examples below assume `cookies.txt` contains the session cookie from
+a completed login; see the [authentication guide](docs/google-oidc-authentication.md)
+for setup and browser-based decisions. Use the action ID reported by the assistant:
 
 ```bash
 curl http://localhost:3000/ai/pending-actions/pending-action-001
-curl -X POST http://localhost:3000/ai/pending-actions/pending-action-001/approve
+curl -b cookies.txt -X POST http://localhost:3000/ai/pending-actions/pending-action-001/approve
 # Or reject instead of approving:
-curl -X POST http://localhost:3000/ai/pending-actions/pending-action-001/reject
+curl -b cookies.txt -X POST http://localhost:3000/ai/pending-actions/pending-action-001/reject
 ```
 
 Decisions accept no replacement arguments. Approval executes the frozen proposal
 without another Gemini call and returns the completed action and work-order
 result. Repeated approval of a completed action returns the same result without
-another side effect. Unknown IDs return 404; invalid state transitions return
-409. Requests containing decision properties return 400. Timestamps are ISO
-strings, and `result` is present only after completion.
+another side effect. Unauthenticated decisions return 401; authenticated decisions
+with unknown IDs return 404, and invalid state transitions return 409. Requests
+containing decision properties return 400. Timestamps are ISO strings, and
+`result` is present only after completion.
 
-This is an unauthenticated prototype: authentication, authorization, and actor
-identity are the next security phase. Actions, IDs, and duplicate-approval
-idempotency are process-local and are not durable across restarts or shared
-across instances. The workflow is not production-secure.
+Google OIDC authentication establishes actor identity; pending actions record
+`approvedBy`/`rejectedBy` and decision timestamps. No authorization policy is
+implemented. `POST /ai/device-assistant` and `GET /ai/pending-actions/:id` remain
+public, including actor records exposed by review. Actions, IDs, and
+duplicate-approval idempotency are process-local, not durable across restarts or
+shared across instances. The workflow is not production-secure.
 
 ## Commands
 
@@ -270,11 +279,13 @@ across instances. The workflow is not production-secure.
 | --- | --- |
 | `npm run build` | Compile the NestJS application |
 | `npm run start:dev` | Start the application in watch mode |
-| `npm run lint` | Run Oxlint and Prettier checks |
+| `npm run lint` | Run Oxlint on src/ and test/ |
+| `npm run format` | Rewrite src/ and test/ TypeScript formatting with Prettier |
 | `npm test` | Run all Vitest specs matched by the main config |
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
+| `npm run auth:http:test` | Verify local session, logout, and authentication guards |
 | `npm run ai:approval:http:test` | Verify pending-action HTTP decisions with real services |
 | `npm run api:openapi:test` | Verify the published OpenAPI contract and Swagger UI mount |
 | `npm run ai:test` | Run the Device Assistant end-to-end invocation |
@@ -305,6 +316,7 @@ API usage may incur cost.
 |   |   |-- tools/            # Tool schemas, executors, and dispatcher
 |   |   |-- device-assistant.prompt.ts
 |   |   `-- device-assistant.service.ts
+|   |-- auth/                 # Google OIDC, local sessions, and decision guards
 |   |-- device-events/        # Event model, mock data, service, REST adapter
 |   |-- devices/              # Device model, mock data, service, REST adapter
 |   |-- maintenance-work-orders/ # Deterministic side-effect service
@@ -315,7 +327,8 @@ API usage may incur cost.
 |   |-- evals/                # Behavioral, integrated, action, RAG, trace cases
 |   `-- integration/          # Retrieval/component integration checks
 |-- docs/
-|   `-- architecture.md
+|   |-- architecture.md
+|   `-- google-oidc-authentication.md
 `-- package.json
 ```
 
@@ -347,8 +360,8 @@ The full rationale and trade-offs are documented in
 | Area | Current implementation | Production need |
 | --- | --- | --- |
 | Persistence | Mock data, in-memory vector index, actions, work orders, and traces | Durable stores, migrations, backup, and recovery |
-| Security | Environment API key; unauthenticated assistant and pending-action endpoints | Authentication, authorization, secrets management, tenant isolation |
-| Approval | HTTP review/decision boundary with frozen execution payload | Authenticated approval interface, audit actor, expiry, policy checks |
+| Security | Google OIDC and protected stateless local sessions; assistant and pending-action review public; decisions require authentication | Authorization policy, tenant isolation, secrets management, session revocation, stronger deployment/security controls |
+| Approval | Authenticated approve/reject; verified actor and decision timestamp recorded; frozen execution payload | Authorization/policy checks, durable audit history, expiry, distributed workflow state, separation of duties as needed |
 | Reliability | Bounded loop and explicit errors | Timeouts, retry policy, circuit breaking, quotas, graceful degradation |
 | Transactions | In-process idempotent duplicate approval | Transactional state transition and distributed idempotency |
 | Observability | Correlated HTTP responses, structured in-memory traces, and NestJS logs | Persistent trace export, redaction policy, metrics, alerting |
@@ -367,7 +380,8 @@ Intentionally out of scope are autonomous long-running agents, multi-agent
 systems, persistent conversation memory, broader third-party MCP ecosystems,
 external vector databases, reranking,
 hybrid search, multimodal input, fine-tuning, LLM-as-a-judge, production
-identity and access control, and distributed production operations.
+identity/session hardening and authorization policy, and distributed production
+operations.
 
 The omissions are deliberate: the repository focuses on clear control boundaries
 before adding infrastructure or broader agent autonomy.
