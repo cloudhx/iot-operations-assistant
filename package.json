@@ -29,7 +29,9 @@
     "ai:evaluate:integrated": "npm run build && node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.integrated.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
     "ai:evaluate:actions": "npm run build && node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.actions.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
     "ai:evaluate:traces": "npm run build && node --env-file=.env ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/evals/device-assistant/device-assistant.trace.evaluation-spec.ts --reporter=verbose --no-file-parallelism",
-    "auth:http:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/auth/auth-http.integration-spec.ts --reporter=verbose --no-file-parallelism"
+    "auth:http:test": "npm run build && node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/auth/auth-http.integration-spec.ts --reporter=verbose --no-file-parallelism",
+    "authz:policy:test": "opa test policy/ -v",
+    "authz:pdp:start": "opa run --server --addr 127.0.0.1:8181 policy/"
   },
   "dependencies": {
     "@google/genai": "^2.22.0",

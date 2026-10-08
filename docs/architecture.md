@@ -200,10 +200,132 @@ approval preserves the original actor and timestamp. The application decision
 service remains independent of Google/OIDC-specific types.
 
 Authentication establishes actor identity only; no authorization policy is
-implemented. Actor records are currently visible through the public review
-endpoint. Pending-action IDs and idempotency remain local to the single-process
+enforced by the current NestJS runtime. Actor records are currently visible
+through the public review endpoint. Pending-action IDs and idempotency remain local to the single-process
 prototype and must not be treated as durable references. See the
 [authentication guide](google-oidc-authentication.md) for session and login details.
+
+## Authorization policy baseline (Phase 1)
+
+Open Policy Agent (OPA) / Rego is the selected Policy Decision Point (PDP)
+technology for application AuthZ. Phase 1 adds only `policy/pending-actions.rego`
+and its Rego unit tests: the NestJS runtime does not call OPA, and current
+approve/reject behavior remains unchanged. The eventual boundary is a NestJS
+Policy Enforcement Point (PEP) calling a local OPA PDP; it is not implemented here.
+
+The decision at `data.authz.pending_actions.allow` accepts this small contract:
+
+```json
+{
+  "principal": { "id": "user-123" },
+  "action": "approve_pending_action",
+  "resource": {
+    "type": "maintenance_work_order",
+    "status": "PENDING_APPROVAL"
+  }
+}
+```
+
+`principal + action + resource` yields a boolean decision. `default allow := false`
+means no matching rule denies. Allow requires a nonblank string principal ID,
+`approve_pending_action` or `reject_pending_action`, and the resource type/status
+shown above. No roles, tenants, provider claims, execution authority, or policy
+data are introduced. The policy does not authenticate a principal: a future PEP
+must supply verified identity and authoritative resource state, not caller claims.
+
+Install the official OPA 1.x CLI separately and put `opa` on PATH; no binary is
+vendored and no npm dependency, cloud account, or paid service is required.
+Run `opa test policy/ -v` or `npm run authz:policy:test` from the repository root.
+The policy uses Rego v1 syntax. See the official
+[OPA installation instructions](https://www.openpolicyagent.org/docs#running-opa)
+and [policy testing reference](https://www.openpolicyagent.org/docs/policy-testing).
+
+This contract covers new decisions on pending proposals only. It denies
+`COMPLETED` resources; Phase 2B must reconcile PEP placement with the existing
+idempotent duplicate-approval response without changing that workflow behavior.
+
+### Local PDP runtime (Phase 2A)
+
+Rego is the policy language; the official OPA executable is the running PDP.
+Phase 1 provides policy source and unit tests. Phase 2A runs that same policy
+in a standalone local process. NestJS remains disconnected: no PEP or runtime
+authorization enforcement is added, and approve/reject behavior is unchanged.
+
+With the official OPA 1.x CLI on PATH, run from the repository root:
+
+```bash
+npm run authz:policy:test
+npm run authz:pdp:start
+# Equivalent server command:
+# opa run --server --addr 127.0.0.1:8181 policy/
+```
+
+OPA stays in the foreground; stop it with Ctrl+C. The explicit loopback address
+keeps this development PDP local on the standard port 8181. Restart it after
+changing policy files. No binary is vendored, and no container or npm dependency
+is required.
+
+In another terminal, query the native Data API. The API's `input` wrapper carries
+the unchanged Phase 1 contract:
+
+```bash
+curl --fail --silent --show-error \
+  http://127.0.0.1:8181/v1/data/authz/pending_actions/allow \
+  -H 'Content-Type: application/json' \
+  --data '{"input":{"principal":{"id":"user-123"},"action":"approve_pending_action","resource":{"type":"maintenance_work_order","status":"PENDING_APPROVAL"}}}'
+# Expected HTTP 200: {"result":true}
+
+curl --fail --silent --show-error \
+  http://127.0.0.1:8181/v1/data/authz/pending_actions/allow \
+  -H 'Content-Type: application/json' \
+  --data '{"input":{}}'
+# Expected HTTP 200: {"result":false}
+```
+
+For deterministic integration verification against that running OPA process,
+run this standalone command with the project's Node.js runtime. It checks
+HTTP status and exact boolean decisions; connection errors, timeouts, missing
+results, and unexpected decisions fail the command. No NestJS or Google call
+is involved.
+
+```bash
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+
+const request = {
+  principal: { id: 'user-123' },
+  action: 'approve_pending_action',
+  resource: { type: 'maintenance_work_order', status: 'PENDING_APPROVAL' },
+};
+const cases = [
+  ['approve', request, true],
+  ['reject', { ...request, action: 'reject_pending_action' }, true],
+  ['unsupported action', { ...request, action: 'execute_maintenance_work_order' }, false],
+  ['incomplete input', {}, false],
+];
+for (const [name, input, expected] of cases) {
+  const response = await fetch('http://127.0.0.1:8181/v1/data/authz/pending_actions/allow', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(response.status, 200, name);
+  const decision = await response.json();
+  assert.equal(decision.result, expected, name);
+  console.log(`${name}: ${JSON.stringify(decision)}`);
+}
+JS
+```
+
+The local verification path is authorization input → OPA Data API →
+`data.authz.pending_actions.allow` → true/false. Both allow and deny return
+HTTP 200; inspect the boolean result. An absent result is not a denial result
+from this named, default-deny policy and must fail verification.
+See the official [Data API reference](https://www.openpolicyagent.org/docs/rest-api).
+HTTP is used here only to exercise OPA's native interface; it does not select the
+application-to-PDP transport. NestJS PEP and transport design are deferred to
+Phase 2B.
 
 ## Design decisions
 

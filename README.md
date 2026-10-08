@@ -285,6 +285,8 @@ shared across instances. The workflow is not production-secure.
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
+| `npm run authz:policy:test` | Run Rego unit tests with the separately installed official OPA CLI |
+| `npm run authz:pdp:start` | Start the standalone local OPA PDP on 127.0.0.1:8181; NestJS is not connected |
 | `npm run auth:http:test` | Verify local session, logout, and authentication guards |
 | `npm run ai:approval:http:test` | Verify pending-action HTTP decisions with real services |
 | `npm run api:openapi:test` | Verify the published OpenAPI contract and Swagger UI mount |
@@ -295,6 +297,10 @@ shared across instances. The workflow is not production-secure.
 | `npm run ai:evaluate:integrated` | Evaluate tool-only, RAG-only, and combined flows |
 | `npm run ai:evaluate:actions` | Evaluate action proposal and approval behavior |
 | `npm run ai:evaluate:traces` | Evaluate structured interaction traces |
+
+For the OPA Data API examples and deterministic local PDP verification, see
+[the architecture guide](docs/architecture.md#local-pdp-runtime-phase-2a).
+Application integration is deferred to Phase 2B.
 
 Gemini-backed commands make live API calls, so outputs and latency may vary and
 API usage may incur cost.
