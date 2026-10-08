@@ -1,3 +1,4 @@
+import { AuthModule } from '../auth/auth.module.js';
 import { Module } from '@nestjs/common';
 
 import { MaintenanceWorkOrdersModule } from '../maintenance-work-orders/maintenance-work-orders.module.js';
@@ -22,7 +23,7 @@ import { MaintenanceKnowledgeToolExecutorService } from './tools/maintenance-kno
 import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-work-order-tool-executor.service.js';
 
 @Module({
-  imports: [MaintenanceWorkOrdersModule],
+  imports: [AuthModule, MaintenanceWorkOrdersModule],
   controllers: [DeviceAssistantController, PendingActionsController],
   providers: [
     DeviceAssistantService,

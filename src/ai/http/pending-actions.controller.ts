@@ -1,5 +1,8 @@
+import { AuthGuard, type AuthenticatedRequest } from '../../auth/auth.guard.js';
 import {
   Body,
+  Req,
+  UseGuards,
   Controller,
   Get,
   HttpCode,
@@ -11,6 +14,8 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBody,
+  ApiCookieAuth,
+  ApiUnauthorizedResponse,
   ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -56,6 +61,9 @@ export class PendingActionsController {
   }
 
   @Post(':id/approve')
+  @UseGuards(AuthGuard)
+  @ApiCookieAuth('session')
+  @ApiUnauthorizedResponse()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve and execute the stored frozen action' })
   @ApiBody({
@@ -75,13 +83,17 @@ export class PendingActionsController {
   approve(
     @Param('id') id: string,
     @Body() _request: PendingActionDecisionRequestDto,
+    @Req() request: AuthenticatedRequest,
   ): PendingActionResponseDto {
     return toPendingActionResponse(
-      this.approval.approvePendingAction(id).action,
+      this.approval.approvePendingAction(id, request.principal).action,
     );
   }
 
   @Post(':id/reject')
+  @UseGuards(AuthGuard)
+  @ApiCookieAuth('session')
+  @ApiUnauthorizedResponse()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject a pending action without execution' })
   @ApiBody({
@@ -97,7 +109,10 @@ export class PendingActionsController {
   reject(
     @Param('id') id: string,
     @Body() _request: PendingActionDecisionRequestDto,
+    @Req() request: AuthenticatedRequest,
   ): PendingActionResponseDto {
-    return toPendingActionResponse(this.approval.rejectPendingAction(id));
+    return toPendingActionResponse(
+      this.approval.rejectPendingAction(id, request.principal),
+    );
   }
 }

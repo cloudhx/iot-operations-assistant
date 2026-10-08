@@ -73,7 +73,9 @@ describe.sequential('Device Assistant action approval evaluation', () => {
     const workOrdersBefore = workOrders.count();
     Logger.log(`Approving action: ${actionId}`, 'ACTION-003');
 
-    const result = approval.approvePendingAction(actionId);
+    const result = approval.approvePendingAction(actionId, {
+      id: 'test-actor',
+    });
 
     Logger.log(`Approval result: ${JSON.stringify(result)}`, 'ACTION-003');
     expect(result.status).toBe('completed');
@@ -90,7 +92,9 @@ describe.sequential('Device Assistant action approval evaluation', () => {
       id: string;
     };
 
-    const result = approval.approvePendingAction(actionId);
+    const result = approval.approvePendingAction(actionId, {
+      id: 'test-actor',
+    });
 
     Logger.log(
       `Duplicate approval result: ${JSON.stringify(result)}`,

@@ -105,6 +105,43 @@ describe('Device assistant OpenAPI contract', () => {
     expect(askDeviceAssistant).not.toHaveBeenCalled();
   });
 
+  it('documents authentication and actor records, with cookie security only on protected routes', async () => {
+    const response = await request(application.getHttpServer())
+      .get('/docs-json')
+      .expect(200);
+    const { paths, components } = response.body;
+    expect(components.securitySchemes.session).toEqual({
+      type: 'apiKey',
+      in: 'cookie',
+      name: 'iot_session',
+    });
+    expect(paths['/auth/google/login'].get.responses['302']).toBeDefined();
+    expect(paths['/auth/google/callback'].get.responses['401']).toBeDefined();
+    expect(paths['/auth/logout'].post.responses).toEqual({
+      '204': {
+        description:
+          'Clear the local application session only; authentication is not required.',
+      },
+    });
+    expect(paths['/auth/logout'].post.security).toBeUndefined();
+    expect(paths['/auth/logout'].post.requestBody).toBeUndefined();
+    expect(paths['/auth/me'].get.security).toEqual([{ session: [] }]);
+    expect(paths['/ai/device-assistant'].post.security).toBeUndefined();
+    expect(paths['/ai/pending-actions/{id}'].get.security).toBeUndefined();
+    expect(
+      components.schemas.PendingActionResponseDto.properties.approvedAt,
+    ).toMatchObject({ type: 'string', format: 'date-time' });
+    expect(
+      components.schemas.PendingActionResponseDto.properties.rejectedAt,
+    ).toMatchObject({ type: 'string', format: 'date-time' });
+    expect(
+      components.schemas.PendingActionResponseDto.properties.approvedBy,
+    ).toBeDefined();
+    expect(
+      components.schemas.PendingActionResponseDto.properties.rejectedBy,
+    ).toBeDefined();
+  });
+
   it('mounts Swagger UI at /docs', async () => {
     await request(application.getHttpServer())
       .get('/docs')
@@ -140,6 +177,7 @@ describe('Device assistant OpenAPI contract', () => {
     });
     for (const decision of ['approve', 'reject']) {
       expect(paths[`/ai/pending-actions/{id}/${decision}`].post).toMatchObject({
+        security: [{ session: [] }],
         requestBody: {
           content: {
             'application/json': {
@@ -150,6 +188,7 @@ describe('Device assistant OpenAPI contract', () => {
         responses: {
           '200': success,
           '400': { description: expect.any(String) },
+          '401': { description: expect.any(String) },
           '404': failure,
           '409': failure,
         },

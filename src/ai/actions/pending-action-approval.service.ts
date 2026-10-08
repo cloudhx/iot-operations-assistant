@@ -1,3 +1,4 @@
+import type { AuthenticatedPrincipal } from '../../auth/authenticated-principal.js';
 import { Injectable, Logger } from '@nestjs/common';
 
 import type { MaintenanceWorkOrder } from '../../maintenance-work-orders/domain/maintenance-work-order.model.js';
@@ -30,7 +31,10 @@ export class PendingActionApprovalService {
     private readonly workOrders: MaintenanceWorkOrdersService,
   ) {}
 
-  approvePendingAction(actionId: string): ApprovePendingActionResult {
+  approvePendingAction(
+    actionId: string,
+    actor: AuthenticatedPrincipal,
+  ): ApprovePendingActionResult {
     const existing = this.pendingActions.findById(actionId);
     if (!existing) throw new PendingActionNotFoundError(actionId);
 
@@ -54,7 +58,7 @@ export class PendingActionApprovalService {
       throw new PendingActionStateConflictError(actionId, existing.status);
     }
 
-    const approved = this.pendingActions.markApproved(actionId);
+    const approved = this.pendingActions.markApproved(actionId, actor);
     let result: MaintenanceWorkOrder;
 
     switch (approved.toolName) {
@@ -84,8 +88,11 @@ export class PendingActionApprovalService {
     };
   }
 
-  rejectPendingAction(actionId: string): PendingAction {
-    const rejected = this.pendingActions.markRejected(actionId);
+  rejectPendingAction(
+    actionId: string,
+    actor: AuthenticatedPrincipal,
+  ): PendingAction {
+    const rejected = this.pendingActions.markRejected(actionId, actor);
     this.logger.log(`Rejected pending action \"${actionId}\"`);
     return rejected;
   }

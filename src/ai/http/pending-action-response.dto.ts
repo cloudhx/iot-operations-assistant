@@ -1,3 +1,4 @@
+import { AuthenticatedPrincipalDto } from '../../auth/authenticated-principal.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import {
@@ -49,6 +50,14 @@ export class PendingActionResponseDto {
     description: 'The stored execution result, present after completion.',
   })
   result?: PendingActionWorkOrderResultDto;
+  @ApiPropertyOptional({ type: AuthenticatedPrincipalDto })
+  approvedBy?: AuthenticatedPrincipalDto;
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  approvedAt?: string;
+  @ApiPropertyOptional({ type: AuthenticatedPrincipalDto })
+  rejectedBy?: AuthenticatedPrincipalDto;
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  rejectedAt?: string;
 }
 
 export function toPendingActionResponse(
@@ -59,6 +68,14 @@ export function toPendingActionResponse(
     toolName: action.toolName,
     status: action.status,
     createdAt: action.createdAt.toISOString(),
+    ...(action.approvedBy ? { approvedBy: { ...action.approvedBy } } : {}),
+    ...(action.approvedAt
+      ? { approvedAt: action.approvedAt.toISOString() }
+      : {}),
+    ...(action.rejectedBy ? { rejectedBy: { ...action.rejectedBy } } : {}),
+    ...(action.rejectedAt
+      ? { rejectedAt: action.rejectedAt.toISOString() }
+      : {}),
     arguments: {
       deviceId: action.arguments.deviceId,
       reason: action.arguments.reason,

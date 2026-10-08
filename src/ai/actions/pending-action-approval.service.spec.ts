@@ -45,7 +45,9 @@ describe('PendingActionApprovalService', () => {
     expect(pending?.status).toBe(PENDING_ACTION_STATUSES.PENDING_APPROVAL);
     expect(Object.isFrozen(pending?.arguments)).toBe(true);
 
-    const approved = fixture.approval.approvePendingAction(result.actionId);
+    const approved = fixture.approval.approvePendingAction(result.actionId, {
+      id: 'test-actor',
+    });
 
     expect(approved.status).toBe('completed');
     expect(fixture.workOrders.count()).toBe(1);
@@ -60,7 +62,9 @@ describe('PendingActionApprovalService', () => {
     const toolResult = await fixture.proposalExecutor.execute(proposalCall);
     const { actionId } = toolResult.result as { actionId: string };
 
-    const first = fixture.approval.approvePendingAction(actionId);
+    const first = fixture.approval.approvePendingAction(actionId, {
+      id: 'test-actor',
+    });
     const storedResult = structuredClone(first.result);
     first.result.reason = 'Caller mutation';
     first.result.createdAt.setFullYear(2000);
@@ -68,9 +72,13 @@ describe('PendingActionApprovalService', () => {
       ...first.action.arguments,
       reason: 'Replacement',
     };
-    const second = fixture.approval.approvePendingAction(actionId);
+    const second = fixture.approval.approvePendingAction(actionId, {
+      id: 'second-actor',
+    });
 
     expect(second.status).toBe('already_completed');
+    expect(second.action.approvedBy).toEqual({ id: 'test-actor' });
+    expect(second.action.approvedAt).toEqual(first.action.approvedAt);
     expect(second.result.id).toBe(first.result.id);
     expect(second.result).toEqual(storedResult);
     expect(fixture.pendingActions.findById(actionId)?.result).toEqual(
@@ -86,11 +94,11 @@ describe('PendingActionApprovalService', () => {
     const toolResult = await fixture.proposalExecutor.execute(proposalCall);
     const { actionId } = toolResult.result as { actionId: string };
 
-    fixture.approval.rejectPendingAction(actionId);
+    fixture.approval.rejectPendingAction(actionId, { id: 'test-actor' });
 
-    expect(() => fixture.approval.approvePendingAction(actionId)).toThrow(
-      PendingActionStateConflictError,
-    );
+    expect(() =>
+      fixture.approval.approvePendingAction(actionId, { id: 'test-actor' }),
+    ).toThrow(PendingActionStateConflictError);
     expect(fixture.workOrders.count()).toBe(0);
   });
 });

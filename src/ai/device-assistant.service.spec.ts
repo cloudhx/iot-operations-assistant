@@ -137,7 +137,9 @@ describe('DeviceAssistantService', () => {
       const interactionError = thrown;
       expect(interactionError.interactionId).toEqual(expect.any(String));
       expect(interactionError.cause).toBe(internalFailure);
-      expect(traceService.findById(interactionError.interactionId)).toMatchObject({
+      expect(
+        traceService.findById(interactionError.interactionId),
+      ).toMatchObject({
         interactionId: interactionError.interactionId,
         outcome: 'FAILED',
         failure: {

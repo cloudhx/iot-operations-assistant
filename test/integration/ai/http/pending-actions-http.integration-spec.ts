@@ -1,3 +1,4 @@
+import { AuthSessionService } from '../../../../src/auth/auth-session.service.js';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -11,6 +12,9 @@ import { MaintenanceWorkOrdersService } from '../../../../src/maintenance-work-o
 
 describe('Pending actions HTTP boundary', () => {
   const askDeviceAssistant = vi.fn();
+  let cookie: string;
+  let cookieB: string;
+  const actor = { id: 'actor-a', email: 'a@example.test' };
   let app: INestApplication;
   let pendingActions: PendingActionsService;
   let workOrders: MaintenanceWorkOrdersService;
@@ -26,6 +30,10 @@ describe('Pending actions HTTP boundary', () => {
     );
 
   beforeAll(async () => {
+    vi.stubEnv(
+      'AUTH_SESSION_SECRET',
+      'test-session-secret-at-least-32-characters',
+    );
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DeviceAssistantService)
       .useValue({ askDeviceAssistant })
@@ -34,6 +42,11 @@ describe('Pending actions HTTP boundary', () => {
       .overrideProvider(GeminiEmbeddingService)
       .useValue({})
       .compile();
+    const sessions = module.get(AuthSessionService);
+    cookie = (await sessions.createSessionCookie(actor)).split(';')[0];
+    cookieB = (await sessions.createSessionCookie({ id: 'actor-b' })).split(
+      ';',
+    )[0];
     pendingActions = module.get(PendingActionsService);
     workOrders = module.get(MaintenanceWorkOrdersService);
     app = module.createNestApplication();
@@ -46,7 +59,46 @@ describe('Pending actions HTTP boundary', () => {
 
   afterAll(async () => {
     await app.close();
+    vi.unstubAllEnvs();
   });
+
+  it.each(['approve', 'reject'])(
+    'requires authentication before lookup or execution: %s',
+    async (decision) => {
+      const action = createAction();
+      const count = workOrders.count();
+      for (const id of [action.id, 'missing']) {
+        await request(app.getHttpServer())
+          .post(`/ai/pending-actions/${id}/${decision}`)
+          .expect(401);
+        await request(app.getHttpServer())
+          .post(`/ai/pending-actions/${id}/${decision}`)
+          .set('Cookie', 'iot_session=tampered')
+          .expect(401);
+      }
+      expect(pendingActions.findById(action.id)?.status).toBe(
+        'PENDING_APPROVAL',
+      );
+      expect(workOrders.count()).toBe(count);
+    },
+  );
+
+  it.each(['approve', 'reject'])(
+    'never accepts a caller-supplied actor: %s',
+    async (decision) => {
+      const action = createAction();
+      const count = workOrders.count();
+      await request(app.getHttpServer())
+        .post(`/ai/pending-actions/${action.id}/${decision}`)
+        .set('Cookie', cookie)
+        .send({ actor: { id: 'forged-actor' } })
+        .expect(400);
+      expect(pendingActions.findById(action.id)?.status).toBe(
+        'PENDING_APPROVAL',
+      );
+      expect(workOrders.count()).toBe(count);
+    },
+  );
 
   it('reviews the exact frozen proposal with an ISO timestamp', async () => {
     const action = createAction();
@@ -70,7 +122,7 @@ describe('Pending actions HTTP boundary', () => {
       const response = await (
         decision === 'review'
           ? client.get(path)
-          : client.post(`${path}/${decision}`)
+          : client.post(`${path}/${decision}`).set('Cookie', cookie)
       ).expect(404);
       expect(response.body).toEqual({
         statusCode: 404,
@@ -85,13 +137,21 @@ describe('Pending actions HTTP boundary', () => {
     const action = createAction();
     const count = workOrders.count();
     const path = `/ai/pending-actions/${action.id}/approve`;
-    const first = await request(app.getHttpServer()).post(path).expect(200);
+    const first = await request(app.getHttpServer())
+      .post(path)
+      .expect(200)
+      .set('Cookie', cookie);
     expect(first.body).toMatchObject({
       id: action.id,
       status: 'COMPLETED',
+      approvedBy: actor,
+      approvedAt: expect.any(String),
       arguments: proposal,
       result: { ...proposal, status: 'OPEN' },
     });
+    expect(first.body.approvedAt).toBe(
+      new Date(first.body.approvedAt).toISOString(),
+    );
     expect(first.body.result.createdAt).toBe(
       new Date(first.body.result.createdAt).toISOString(),
     );
@@ -100,6 +160,7 @@ describe('Pending actions HTTP boundary', () => {
 
     const second = await request(app.getHttpServer())
       .post(path)
+      .set('Cookie', cookieB)
       .send({})
       .expect(200);
     expect(second.body).toEqual(first.body);
@@ -116,13 +177,19 @@ describe('Pending actions HTTP boundary', () => {
     const path = `/ai/pending-actions/${action.id}`;
     const rejected = await request(app.getHttpServer())
       .post(`${path}/reject`)
+      .set('Cookie', cookie)
       .expect(200);
     expect(rejected.body.status).toBe('REJECTED');
+    expect(rejected.body.rejectedBy).toEqual(actor);
+    expect(rejected.body.rejectedAt).toBe(
+      new Date(rejected.body.rejectedAt).toISOString(),
+    );
     expect(rejected.body).not.toHaveProperty('result');
     expect(pendingActions.findById(action.id)?.status).toBe('REJECTED');
     for (const decision of ['approve', 'reject']) {
       const conflict = await request(app.getHttpServer())
         .post(`${path}/${decision}`)
+        .set('Cookie', cookieB)
         .expect(409);
       expect(conflict.body).toEqual({
         statusCode: 409,
@@ -133,13 +200,23 @@ describe('Pending actions HTTP boundary', () => {
       });
     }
     expect(workOrders.count()).toBe(count);
+    expect(pendingActions.findById(action.id)?.rejectedBy).toEqual(actor);
+    expect(pendingActions.findById(action.id)?.rejectedAt?.toISOString()).toBe(
+      rejected.body.rejectedAt,
+    );
   });
 
   it('refuses rejection of a completed action', async () => {
     const action = createAction();
     const path = `/ai/pending-actions/${action.id}`;
-    await request(app.getHttpServer()).post(`${path}/approve`).expect(200);
-    await request(app.getHttpServer()).post(`${path}/reject`).expect(409);
+    await request(app.getHttpServer())
+      .post(`${path}/approve`)
+      .expect(200)
+      .set('Cookie', cookie);
+    await request(app.getHttpServer())
+      .post(`${path}/reject`)
+      .expect(409)
+      .set('Cookie', cookie);
     expect(pendingActions.findById(action.id)?.status).toBe('COMPLETED');
   });
 
@@ -147,10 +224,11 @@ describe('Pending actions HTTP boundary', () => {
     'refuses a decision on an APPROVED action: %s',
     async (decision) => {
       const action = createAction();
-      pendingActions.markApproved(action.id);
+      pendingActions.markApproved(action.id, actor);
       const count = workOrders.count();
       await request(app.getHttpServer())
         .post(`/ai/pending-actions/${action.id}/${decision}`)
+        .set('Cookie', cookie)
         .expect(409);
       expect(workOrders.count()).toBe(count);
       expect(pendingActions.findById(action.id)?.status).toBe('APPROVED');
@@ -164,6 +242,7 @@ describe('Pending actions HTTP boundary', () => {
       const count = workOrders.count();
       await request(app.getHttpServer())
         .post(`/ai/pending-actions/${action.id}/${decision}`)
+        .set('Cookie', cookie)
         .send({ deviceId: 'different-device', reason: 'Changed payload' })
         .expect(400);
       expect(pendingActions.findById(action.id)).toMatchObject({

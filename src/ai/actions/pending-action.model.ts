@@ -1,3 +1,4 @@
+import type { AuthenticatedPrincipal } from '../../auth/authenticated-principal.js';
 import type {
   CreateMaintenanceWorkOrderInput,
   MaintenanceWorkOrder,
@@ -20,6 +21,10 @@ export interface CreateMaintenanceWorkOrderPendingAction {
   status: PendingActionStatus;
   createdAt: Date;
   result?: MaintenanceWorkOrder;
+  approvedBy?: AuthenticatedPrincipal;
+  approvedAt?: Date;
+  rejectedBy?: AuthenticatedPrincipal;
+  rejectedAt?: Date;
 }
 
 export type PendingAction = CreateMaintenanceWorkOrderPendingAction;

@@ -1,3 +1,4 @@
+import type { AuthenticatedPrincipal } from '../../auth/authenticated-principal.js';
 import { Injectable } from '@nestjs/common';
 
 import type {
@@ -52,10 +53,12 @@ export class PendingActionsService {
     return this.actions.size;
   }
 
-  markApproved(id: string): PendingAction {
+  markApproved(id: string, actor: AuthenticatedPrincipal): PendingAction {
     const action = this.requireAction(id);
     this.requireStatus(action, PENDING_ACTION_STATUSES.PENDING_APPROVAL);
     action.status = PENDING_ACTION_STATUSES.APPROVED;
+    action.approvedBy = { ...actor };
+    action.approvedAt = new Date();
     return this.snapshot(action);
   }
 
@@ -67,10 +70,12 @@ export class PendingActionsService {
     return this.snapshot(action);
   }
 
-  markRejected(id: string): PendingAction {
+  markRejected(id: string, actor: AuthenticatedPrincipal): PendingAction {
     const action = this.requireAction(id);
     this.requireStatus(action, PENDING_ACTION_STATUSES.PENDING_APPROVAL);
     action.status = PENDING_ACTION_STATUSES.REJECTED;
+    action.rejectedBy = { ...actor };
+    action.rejectedAt = new Date();
     return this.snapshot(action);
   }
 

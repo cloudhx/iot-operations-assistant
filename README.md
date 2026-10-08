@@ -371,3 +371,5 @@ identity and access control, and distributed production operations.
 
 The omissions are deliberate: the repository focuses on clear control boundaries
 before adding infrastructure or broader agent autonomy.
+
+Google OIDC login, cookie sessions, and approval actor setup: [authentication guide](docs/google-oidc-authentication.md).
