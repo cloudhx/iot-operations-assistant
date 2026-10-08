@@ -35,14 +35,21 @@ describe.sequential('Device Assistant structured trace evaluation', () => {
     await application.close();
   });
 
-  it('TRACE-001: records a current-information interaction', async () => {
+  it('TRACE-001: records current information and any optional proposal without execution', async () => {
+    const pendingBefore = pendingActions.count();
+    const workOrdersBefore = workOrders.count();
     const question = 'What is the latest telemetry for vibration-sensor-001?';
 
     await runAndLog(question, 'TRACE-001');
     const trace = requireLatestTrace();
     const toolCalls = flattenToolCalls(trace);
 
-    expect(trace.outcome).toBe(AI_INTERACTION_OUTCOMES.ANSWERED);
+    const newActions = pendingActions.findAll().slice(pendingBefore);
+    expect(trace.outcome).toBe(
+      newActions.length > 0
+        ? AI_INTERACTION_OUTCOMES.APPROVAL_REQUIRED
+        : AI_INTERACTION_OUTCOMES.ANSWERED,
+    );
     expect(trace.completedAt).toBeInstanceOf(Date);
     expect(trace.totalLatencyMs).toBeTypeOf('number');
     expect(trace.modelCallCount).toBeGreaterThanOrEqual(1);
@@ -54,8 +61,14 @@ describe.sequential('Device Assistant structured trace evaluation', () => {
         }),
       ]),
     );
-    expect(trace.actionProposalCount).toBe(0);
-    expect(trace.pendingActionIds).toEqual([]);
+    expect(trace.actionProposalCount).toBe(newActions.length);
+    expect(trace.pendingActionIds).toEqual(newActions.map(({ id }) => id));
+    expect(newActions.length).toBeLessThanOrEqual(1);
+    for (const action of newActions) {
+      expect(action.status).toBe('PENDING_APPROVAL');
+      expect(Object.isFrozen(action.arguments)).toBe(true);
+    }
+    expect(workOrders.count()).toBe(workOrdersBefore);
   }, 120_000);
 
   it('TRACE-002: records retrieval query and ranked chunk metadata', async () => {

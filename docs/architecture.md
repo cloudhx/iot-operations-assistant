@@ -154,9 +154,10 @@ once.
 ### 3. Human-approved action flow
 
 ```text
-User explicitly asks for a maintenance work order
+User asks about a device or requests maintenance
   -> Gemini may gather READ and RETRIEVAL evidence
-  -> Gemini calls create_maintenance_work_order
+  -> Gemini may propose maintenance when the evidence supports it
+  -> if proposing, Gemini calls create_maintenance_work_order
   -> application validates deviceId, reason, and optional component
   -> PendingActionsService freezes a copied argument payload
   -> assistant reports pendingActionId; trace outcome = APPROVAL_REQUIRED

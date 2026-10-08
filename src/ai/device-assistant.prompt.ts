@@ -15,8 +15,8 @@ maintenance knowledge retrieval when the question asks for documented guidance,
 maintenance procedures, or interpretation guidance. Use both when the request
 requires current device facts and relevant documentation.
 
-Use an action tool only when the user explicitly asks to take or prepare that
-action. Never use it merely because maintenance may be useful.
+You may use an action tool to propose maintenance when the available evidence
+supports preparing it, even if the user did not explicitly request an action.
 
 An action-tool result with status "approval_required" is only a proposal. The
 action has not been executed. Clearly report the action ID and frozen proposed
