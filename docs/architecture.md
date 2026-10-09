@@ -210,8 +210,8 @@ prototype and must not be treated as durable references. See the
 Open Policy Agent (OPA) / Rego is the selected Policy Decision Point (PDP)
 technology for application AuthZ. Phase 1 adds only `policy/pending-actions.rego`
 and its Rego unit tests: the NestJS runtime does not call OPA, and current
-approve/reject behavior remains unchanged. The eventual boundary is a NestJS
-Policy Enforcement Point (PEP) calling a local OPA PDP; it is not implemented here.
+approve/reject behavior remains unchanged. Phase 2B adds the callable client
+boundary below; a NestJS Policy Enforcement Point (PEP) is still deferred.
 
 The decision at `data.authz.pending_actions.allow` accepts this small contract:
 
@@ -241,7 +241,7 @@ The policy uses Rego v1 syntax. See the official
 and [policy testing reference](https://www.openpolicyagent.org/docs/policy-testing).
 
 This contract covers new decisions on pending proposals only. It denies
-`COMPLETED` resources; Phase 2B must reconcile PEP placement with the existing
+`COMPLETED` resources; Phase 3 must reconcile PEP placement with the existing
 idempotent duplicate-approval response without changing that workflow behavior.
 
 ### Local PDP runtime (Phase 2A)
@@ -324,8 +324,37 @@ HTTP 200; inspect the boolean result. An absent result is not a denial result
 from this named, default-deny policy and must fail verification.
 See the official [Data API reference](https://www.openpolicyagent.org/docs/rest-api).
 HTTP is used here only to exercise OPA's native interface; it does not select the
-application-to-PDP transport. NestJS PEP and transport design are deferred to
-Phase 2B.
+application-to-PDP transport on its own. Phase 2B selects native HTTP for the
+client below; PEP placement and enforcement are deferred to Phase 3.
+
+### Application PDP client (Phase 2B)
+
+NestJS can now resolve `OpaPendingActionPolicyClient` through
+`AuthorizationModule`, imported by `AppModule`. The narrow
+`PendingActionAuthorizationRequest` carries only principal ID, approve/reject
+action, and maintenance resource type/status. The call path is NestJS → OPA
+client boundary → HTTP Data API → standalone OPA PDP. No controller or business
+service invokes the client yet: approve/reject behavior remains unchanged,
+and no PEP, authorization enforcement, or new 403 response exists.
+
+`evaluate(request)` POSTs `{ "input": request }` to
+`/v1/data/authz/pending_actions/allow` using Node's built-in fetch. `OPA_URL`
+configures the base URL and defaults to `http://127.0.0.1:8181`. Configuration is
+resolved at evaluation time; construction and application startup make no OPA
+request. A five-second deadline covers the request and response body reading.
+
+A successful boolean `result` is returned unchanged: true means allowed and
+false means denied. Connection failures, timeout, non-2xx responses, invalid
+JSON, missing/non-boolean results, and invalid URL configuration throw
+`OpaPdpError`; original communication/parsing causes are preserved. Failure
+never becomes an allow or a normal policy denial. No HTTP error mapping is
+implemented in this phase. Focused tests use a fetch test double and require
+neither OPA nor Google; Phase 2A's real Data API check remains separate.
+
+Phase 3 will place the PEP and enforce decisions using verified principal and
+server-owned resource state, while preserving completed duplicate approval.
+HTTP is the native OPA transport selected for this phase; sidecar/container
+deployment remains a later cloud-native step.
 
 ## Design decisions
 

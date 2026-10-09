@@ -1,4 +1,5 @@
 import { AuthModule } from './auth/auth.module.js';
+import { AuthorizationModule } from './authorization/authorization.module.js';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_PIPE } from '@nestjs/core';
 import { DevicesModule } from './devices/devices.module.js';
@@ -9,6 +10,7 @@ import { AiModule } from './ai/ai.module.js';
 @Module({
   imports: [
     AuthModule,
+    AuthorizationModule,
     DevicesModule,
     DeviceEventsModule,
     TelemetryModule,
