@@ -1,4 +1,6 @@
 import { AuthModule } from '../auth/auth.module.js';
+import { AuthorizationModule } from '../authorization/authorization.module.js';
+import { PendingActionDecisionService } from './actions/pending-action-decision.service.js';
 import { Module } from '@nestjs/common';
 
 import { MaintenanceWorkOrdersModule } from '../maintenance-work-orders/maintenance-work-orders.module.js';
@@ -23,7 +25,7 @@ import { MaintenanceKnowledgeToolExecutorService } from './tools/maintenance-kno
 import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-work-order-tool-executor.service.js';
 
 @Module({
-  imports: [AuthModule, MaintenanceWorkOrdersModule],
+  imports: [AuthModule, AuthorizationModule, MaintenanceWorkOrdersModule],
   controllers: [DeviceAssistantController, PendingActionsController],
   providers: [
     DeviceAssistantService,
@@ -36,6 +38,7 @@ import { MaintenanceWorkOrderToolExecutorService } from './tools/maintenance-wor
     MaintenanceWorkOrderToolExecutorService,
     PendingActionsService,
     PendingActionApprovalService,
+    PendingActionDecisionService,
     AiTraceService,
     DocumentRetrievalService,
     MarkdownDocumentChunkerService,

@@ -199,8 +199,8 @@ passes into the application decision service. Pending actions record
 approval preserves the original actor and timestamp. The application decision
 service remains independent of Google/OIDC-specific types.
 
-Authentication establishes actor identity only; no authorization policy is
-enforced by the current NestJS runtime. Actor records are currently visible
+Authentication establishes actor identity; pending-action decisions now enforce
+the narrow OPA policy described below. Actor records are currently visible
 through the public review endpoint. Pending-action IDs and idempotency remain local to the single-process
 prototype and must not be treated as durable references. See the
 [authentication guide](google-oidc-authentication.md) for session and login details.
@@ -209,9 +209,8 @@ prototype and must not be treated as durable references. See the
 
 Open Policy Agent (OPA) / Rego is the selected Policy Decision Point (PDP)
 technology for application AuthZ. Phase 1 adds only `policy/pending-actions.rego`
-and its Rego unit tests: the NestJS runtime does not call OPA, and current
-approve/reject behavior remains unchanged. Phase 2B adds the callable client
-boundary below; a NestJS Policy Enforcement Point (PEP) is still deferred.
+and its Rego unit tests. Phase 2B adds the callable client, and Phase 3 adds
+pending-action enforcement as described below.
 
 The decision at `data.authz.pending_actions.allow` accepts this small contract:
 
@@ -230,8 +229,8 @@ The decision at `data.authz.pending_actions.allow` accepts this small contract:
 means no matching rule denies. Allow requires a nonblank string principal ID,
 `approve_pending_action` or `reject_pending_action`, and the resource type/status
 shown above. No roles, tenants, provider claims, execution authority, or policy
-data are introduced. The policy does not authenticate a principal: a future PEP
-must supply verified identity and authoritative resource state, not caller claims.
+data are introduced. The policy does not authenticate a principal: the PEP
+supplies verified identity and authoritative resource state, not caller claims.
 
 Install the official OPA 1.x CLI separately and put `opa` on PATH; no binary is
 vendored and no npm dependency, cloud account, or paid service is required.
@@ -241,15 +240,15 @@ The policy uses Rego v1 syntax. See the official
 and [policy testing reference](https://www.openpolicyagent.org/docs/policy-testing).
 
 This contract covers new decisions on pending proposals only. It denies
-`COMPLETED` resources; Phase 3 must reconcile PEP placement with the existing
-idempotent duplicate-approval response without changing that workflow behavior.
+`COMPLETED` resources; Phase 3 preserves completed duplicate approval as an
+idempotent readback before evaluating a new pending decision.
 
 ### Local PDP runtime (Phase 2A)
 
 Rego is the policy language; the official OPA executable is the running PDP.
 Phase 1 provides policy source and unit tests. Phase 2A runs that same policy
-in a standalone local process. NestJS remains disconnected: no PEP or runtime
-authorization enforcement is added, and approve/reject behavior is unchanged.
+in a standalone local process. Phase 2A itself did not connect NestJS or enforce
+requests; the later client and enforcement stages are described below.
 
 With the official OPA 1.x CLI on PATH, run from the repository root:
 
@@ -325,7 +324,7 @@ from this named, default-deny policy and must fail verification.
 See the official [Data API reference](https://www.openpolicyagent.org/docs/rest-api).
 HTTP is used here only to exercise OPA's native interface; it does not select the
 application-to-PDP transport on its own. Phase 2B selects native HTTP for the
-client below; PEP placement and enforcement are deferred to Phase 3.
+client below; Phase 3 supplies the PEP and enforcement described next.
 
 ### Application PDP client (Phase 2B)
 
@@ -333,9 +332,8 @@ NestJS can now resolve `OpaPendingActionPolicyClient` through
 `AuthorizationModule`, imported by `AppModule`. The narrow
 `PendingActionAuthorizationRequest` carries only principal ID, approve/reject
 action, and maintenance resource type/status. The call path is NestJS → OPA
-client boundary → HTTP Data API → standalone OPA PDP. No controller or business
-service invokes the client yet: approve/reject behavior remains unchanged,
-and no PEP, authorization enforcement, or new 403 response exists.
+client boundary → HTTP Data API → standalone OPA PDP. Phase 2B itself introduced
+no enforcement; Phase 3 now invokes this boundary through the pending-action PEP.
 
 `evaluate(request)` POSTs `{ "input": request }` to
 `/v1/data/authz/pending_actions/allow` using Node's built-in fetch. `OPA_URL`
@@ -347,14 +345,52 @@ A successful boolean `result` is returned unchanged: true means allowed and
 false means denied. Connection failures, timeout, non-2xx responses, invalid
 JSON, missing/non-boolean results, and invalid URL configuration throw
 `OpaPdpError`; original communication/parsing causes are preserved. Failure
-never becomes an allow or a normal policy denial. No HTTP error mapping is
-implemented in this phase. Focused tests use a fetch test double and require
+never becomes an allow or a normal policy denial. The client owns no HTTP
+controller mapping; Phase 3 maps failures at the transport boundary. Focused tests use a fetch test double and require
 neither OPA nor Google; Phase 2A's real Data API check remains separate.
 
-Phase 3 will place the PEP and enforce decisions using verified principal and
-server-owned resource state, while preserving completed duplicate approval.
+Phase 3 uses verified principal and server-owned resource state and preserves
+completed duplicate approval, as described below.
 HTTP is the native OPA transport selected for this phase; sidecar/container
 deployment remains a later cloud-native step.
+
+### Pending-action enforcement (Phase 3)
+
+Google OIDC → AuthGuard / `AuthenticatedPrincipal` → pending-action PEP
+(`PendingActionDecisionService`) → `OpaPendingActionPolicyClient` → OPA / Rego
+→ allow/deny → `PendingActionApprovalService` → deterministic execution.
+AuthN establishes identity; the PEP gathers trusted context and enforces the
+PDP decision; OPA neither authenticates the actor nor executes the action.
+The existing application service retains state transitions, actor attribution,
+frozen-payload execution, and duplicate-approval semantics.
+
+Approve/reject controllers invoke the PEP after authentication and empty-body
+validation. The PEP loads authoritative pending-action state, uses only the
+verified principal ID, derives approve/reject from the server operation, and
+maps the concrete maintenance proposal to `maintenance_work_order`. It accepts
+no authorization context from the body. Only `PENDING_APPROVAL` decisions query
+OPA. Allow continues the original application operation; deny leaves state
+unchanged and returns sanitized 403 `PENDING_ACTION_AUTHORIZATION_DENIED`.
+PDP failures remain separate errors with cause chaining and map to sanitized
+503 `PENDING_ACTION_AUTHORIZATION_UNAVAILABLE`, without exposing URLs, provider
+response bodies, or stack traces. Missing/invalid sessions still return 401.
+
+A completed approval is an authenticated idempotent readback, not a new
+side-effect decision: it bypasses PDP evaluation and returns the original work
+order, actor, and timestamp even if OPA is unavailable. Other non-pending
+requests go to existing application state handling, preserving 409 for repeated
+rejection, rejection of completed actions, and decisions on APPROVED actions.
+Unknown IDs remain 404. The Rego policy is unchanged. After awaiting OPA, the
+application service checks current state again before mutation, so a competing
+decision cannot produce a second work order or overwrite a rejection.
+
+Assistant and review endpoints remain public, including actor records in review.
+This is deliberately narrow policy enforcement, not RBAC, tenancy, or ownership
+control. Direct internal use of `PendingActionApprovalService` is still the
+business primitive; HTTP decisions must use the PEP. Future entry points must
+preserve that boundary. HTTP tests replace only the PDP boundary for policy
+results and use real local auth, PEP, and decision services. Deployment as a
+sidecar/container remains a later step.
 
 ## Design decisions
 
@@ -630,7 +666,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Pending actions | In-memory map, process-local IDs, and recorded actors/decision timestamps | Demonstrates lifecycle and frozen payload | Durable workflow state, expiry, audit history |
 | Idempotency | Return stored result for completed action | Demonstrates duplicate-approval semantics | Transactional idempotency key across workers |
 | Authentication | Google OIDC-backed local sessions protect decision endpoints; assistant and review remain public | Demonstrates verified actor identity at the HTTP boundary | Production identity/session hardening and distributed session/revocation strategy |
-| Authorization | Authenticated actor identity only; no decision policy; actor records visible in public review | AuthN and AuthZ remain separate responsibilities | RBAC/policy, tenant/ownership rules, and separation of duties as justified |
+| Authorization | Authenticated identity plus narrow OPA pending-decision policy; actor records visible in public review | AuthN and AuthZ remain separate responsibilities | RBAC/policy, tenant/ownership rules, and separation of duties as justified |
 | Secrets | Gemini/Google OIDC credentials and session secret in environment variables | Minimal local configuration | Managed secret store, rotation, least privilege |
 | Model reliability | Explicit errors and bounded loop | Keeps behavior observable | Timeouts, retry budget, circuit breaker, fallback policy |
 | Cost control | Fixed small data and bounded rounds | Keeps API usage bounded during local evaluation | Token budgets, quotas, caching, cost telemetry |
@@ -641,7 +677,7 @@ review. Evaluation and tracing are complementary, not interchangeable.
 | Traces | In-memory structured records | Easy local inspection | Export to telemetry backend with retention and redaction |
 | Error detail | Minimal trace failures, stack in logs | Reduces trace data exposure | Formal logging classification and secure diagnostics |
 | Evaluation | Local live-model and deterministic assertions | Exposes model variability | Versioned datasets, CI gates, latency/cost quality bars |
-| API surface | Deterministic REST, public assistant/review, and authenticated decisions | Demonstrates AI and deterministic approval boundaries | Authorization policy, versioning, rate limits, abuse controls |
+| API surface | Deterministic REST, public assistant/review, and authenticated decisions | Demonstrates AI and deterministic approval boundaries | Richer decision policies, versioning, rate limits, abuse controls |
 | Deployment | Local NestJS application | Application-level architecture is the current focus | Containerization, health checks, SLOs, runbooks |
 
 ## GenAI landscape coverage

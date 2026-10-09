@@ -189,6 +189,8 @@ describe('Device assistant OpenAPI contract', () => {
           '200': success,
           '400': { description: expect.any(String) },
           '401': { description: expect.any(String) },
+          '403': failure,
+          '503': failure,
           '404': failure,
           '409': failure,
         },

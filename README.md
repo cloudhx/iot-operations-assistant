@@ -195,7 +195,7 @@ stored.
 | RAG retrieval | Markdown chunking, Gemini embeddings, cosine similarity | Ranked chunk metadata | One local document; in-memory index |
 | Grounded generation | System instructions and explicit evidence boundaries | Evaluation cases for unsupported inference | Prompt constraints are not a formal guarantee |
 | Combined orchestration | Read, retrieval, and proposal tools | Tool-category and trace assertions | Model chooses capabilities probabilistically |
-| Human-in-the-loop action | Frozen `PendingAction` and approval service | No execution before approval | In-memory state; no authorization policy or approval UI |
+| Human-in-the-loop action | Frozen `PendingAction` and approval service | No execution before approval | In-memory state; narrow OPA decision policy; no approval UI |
 | Idempotent approval | Completed action returns its existing result | State-based tests | No distributed idempotency key or transaction |
 | Observability | Structured in-memory interaction trace | Trace evaluation suite | No persistent/exported telemetry or dashboards |
 | Evaluation | Unit, integration, end-to-end, and evaluation specs | Behavior, state, and trace assertions | No CI quality gate or automated semantic judge |
@@ -234,7 +234,7 @@ services plus `POST /ai/device-assistant`. The assistant endpoint validates the
 request and returns an answer with the same interaction ID used by its in-memory
 execution trace. The assistant endpoint remains public. Google OIDC and a
 protected stateless cookie provide local session authentication for approve/reject;
-authorization policy, rate limiting, and durable tracing remain production gaps.
+richer authorization policy, rate limiting, and durable tracing remain production gaps.
 
 ### API documentation
 
@@ -249,7 +249,9 @@ review/approval/rejection. The OpenAPI document is available at
 Review GET remains public; approve/reject require an authenticated local session.
 The decision examples below assume `cookies.txt` contains the session cookie from
 a completed login; see the [authentication guide](docs/google-oidc-authentication.md)
-for setup and browser-based decisions. Use the action ID reported by the assistant:
+for setup and browser-based decisions. Start the local PDP with
+`npm run authz:pdp:start` before new pending decisions. Use the action ID reported
+by the assistant:
 
 ```bash
 curl http://localhost:3000/ai/pending-actions/pending-action-001
@@ -267,8 +269,8 @@ containing decision properties return 400. Timestamps are ISO strings, and
 `result` is present only after completion.
 
 Google OIDC authentication establishes actor identity; pending actions record
-`approvedBy`/`rejectedBy` and decision timestamps. No authorization policy is
-implemented. `POST /ai/device-assistant` and `GET /ai/pending-actions/:id` remain
+`approvedBy`/`rejectedBy` and decision timestamps. New pending decisions enforce
+the OPA policy; explicit denial returns 403 and PDP failure returns sanitized 503. `POST /ai/device-assistant` and `GET /ai/pending-actions/:id` remain
 public, including actor records exposed by review. Actions, IDs, and
 duplicate-approval idempotency are process-local, not durable across restarts or
 shared across instances. The workflow is not production-secure.
@@ -300,7 +302,8 @@ shared across instances. The workflow is not production-secure.
 
 For the OPA Data API examples and deterministic local PDP verification, see
 [the architecture guide](docs/architecture.md#local-pdp-runtime-phase-2a).
-Application integration is deferred to Phase 2B.
+Pending decisions now enforce OPA results; run the PDP when testing authenticated
+approve/reject. Completed duplicate approval remains an idempotent readback.
 
 Gemini-backed commands make live API calls, so outputs and latency may vary and
 API usage may incur cost.
@@ -366,8 +369,8 @@ The full rationale and trade-offs are documented in
 | Area | Current implementation | Production need |
 | --- | --- | --- |
 | Persistence | Mock data, in-memory vector index, actions, work orders, and traces | Durable stores, migrations, backup, and recovery |
-| Security | Google OIDC and protected stateless local sessions; assistant and pending-action review public; decisions require authentication | Authorization policy, tenant isolation, secrets management, session revocation, stronger deployment/security controls |
-| Approval | Authenticated approve/reject; verified actor and decision timestamp recorded; frozen execution payload | Authorization/policy checks, durable audit history, expiry, distributed workflow state, separation of duties as needed |
+| Security | Google OIDC and protected stateless local sessions; assistant and pending-action review public; new decisions require authentication and OPA allow | Richer authorization policy, tenant isolation, secrets management, session revocation, stronger deployment/security controls |
+| Approval | Authenticated approve/reject with OPA enforcement for pending decisions; verified actor and decision timestamp recorded; frozen execution payload | Richer authorization/policy checks, durable audit history, expiry, distributed workflow state, separation of duties as needed |
 | Reliability | Bounded loop and explicit errors | Timeouts, retry policy, circuit breaking, quotas, graceful degradation |
 | Transactions | In-process idempotent duplicate approval | Transactional state transition and distributed idempotency |
 | Observability | Correlated HTTP responses, structured in-memory traces, and NestJS logs | Persistent trace export, redaction policy, metrics, alerting |

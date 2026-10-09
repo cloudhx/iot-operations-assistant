@@ -16,6 +16,8 @@ import {
   ApiBody,
   ApiCookieAuth,
   ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiServiceUnavailableResponse,
   ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -25,7 +27,7 @@ import {
 } from '@nestjs/swagger';
 
 import { PendingActionNotFoundError } from '../actions/pending-action.errors.js';
-import { PendingActionApprovalService } from '../actions/pending-action-approval.service.js';
+import { PendingActionDecisionService } from '../actions/pending-action-decision.service.js';
 import { PendingActionsService } from '../actions/pending-actions.service.js';
 import { PendingActionDecisionRequestDto } from './pending-action-decision-request.dto.js';
 import { PendingActionErrorResponseDto } from './pending-action-error-response.dto.js';
@@ -46,7 +48,7 @@ import {
 export class PendingActionsController {
   constructor(
     private readonly pendingActions: PendingActionsService,
-    private readonly approval: PendingActionApprovalService,
+    private readonly decisions: PendingActionDecisionService,
   ) {}
 
   @Get(':id')
@@ -64,6 +66,8 @@ export class PendingActionsController {
   @UseGuards(AuthGuard)
   @ApiCookieAuth('session')
   @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse({ type: PendingActionErrorResponseDto })
+  @ApiServiceUnavailableResponse({ type: PendingActionErrorResponseDto })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve and execute the stored frozen action' })
   @ApiBody({
@@ -80,20 +84,24 @@ export class PendingActionsController {
     type: PendingActionErrorResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Decision bodies must be empty.' })
-  approve(
+  async approve(
     @Param('id') id: string,
     @Body() _request: PendingActionDecisionRequestDto,
     @Req() request: AuthenticatedRequest,
-  ): PendingActionResponseDto {
-    return toPendingActionResponse(
-      this.approval.approvePendingAction(id, request.principal).action,
+  ): Promise<PendingActionResponseDto> {
+    const result = await this.decisions.approvePendingAction(
+      id,
+      request.principal,
     );
+    return toPendingActionResponse(result.action);
   }
 
   @Post(':id/reject')
   @UseGuards(AuthGuard)
   @ApiCookieAuth('session')
   @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse({ type: PendingActionErrorResponseDto })
+  @ApiServiceUnavailableResponse({ type: PendingActionErrorResponseDto })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject a pending action without execution' })
   @ApiBody({
@@ -106,13 +114,13 @@ export class PendingActionsController {
     type: PendingActionErrorResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Decision bodies must be empty.' })
-  reject(
+  async reject(
     @Param('id') id: string,
     @Body() _request: PendingActionDecisionRequestDto,
     @Req() request: AuthenticatedRequest,
-  ): PendingActionResponseDto {
+  ): Promise<PendingActionResponseDto> {
     return toPendingActionResponse(
-      this.approval.rejectPendingAction(id, request.principal),
+      await this.decisions.rejectPendingAction(id, request.principal),
     );
   }
 }
