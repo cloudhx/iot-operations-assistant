@@ -275,6 +275,50 @@ public, including actor records exposed by review. Actions, IDs, and
 duplicate-approval idempotency are process-local, not durable across restarts or
 shared across instances. The workflow is not production-secure.
 
+### Local Docker Compose runtime
+
+Docker Engine / Docker Desktop with Compose v2 is an additional runtime option.
+The existing `npm run start:dev` and `npm run authz:pdp:start` workflows remain
+available. Compose runs the compiled application, not watch mode.
+
+Use the existing ignored `.env` (copy `.env.example` if needed), or export the
+same environment variables in your shell. Set Gemini/OIDC credentials and a
+session secret as described in the authentication guide; no secrets are built
+into images. GEMINI_API_KEY is required by existing application startup, and
+Compose reports it missing before starting services. Keep the Google registered redirect URI and
+`GOOGLE_OIDC_REDIRECT_URI` at `http://localhost:3000/auth/google/callback` for this
+local topology: the browser reaches the host address, not `app` or `opa` DNS.
+
+```bash
+docker compose config --quiet
+docker compose up --build -d --wait
+curl --fail http://localhost:3000/devices
+# Rego tests use the same official OPA image and read-only policy mount:
+docker compose run --rm --no-deps opa test /policy -v
+# Stop both services; in-memory proposals/work orders are lost on app restart:
+docker compose down
+```
+
+`app` is exposed only on host loopback port 3000; `opa` has no published host
+port. Compose DNS resolves `opa` inside the network, so the app's explicit
+`OPA_URL=http://opa:8181` overrides the local `.env` loopback value. `localhost`
+inside a container refers to that container. The existing authorization path,
+fail-closed 503 behavior, and duplicate-approval semantics are unchanged.
+
+The application image defaults to production and runs as the non-root `node`
+user. This localhost HTTP Compose topology explicitly uses `NODE_ENV=development`
+so the existing cookie and OIDC policies permit local HTTP. An HTTPS production
+deployment must use production mode and an externally registered HTTPS callback.
+Development mode here does not install dev dependencies or run Nest watch mode.
+
+OPA readiness probes the running named Data API decision and expects the
+existing default denial for empty input. Compose waits for OPA health before
+starting the app; app health uses the public `/devices` endpoint. These are real
+checks rather than a sleep, and do not guarantee ongoing dependency availability.
+Restart `opa` after editing policies. See the
+[container topology and network verification](docs/architecture.md#local-container-topology)
+for a real app-client-to-PDP decision check.
+
 ## Commands
 
 | Command | Purpose |

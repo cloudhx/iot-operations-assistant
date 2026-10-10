@@ -1,0 +1,51 @@
+services:
+  app:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Local HTTP login uses the existing development cookie/redirect policy.
+      # The runtime image itself defaults to production for HTTPS deployments.
+      NODE_ENV: development
+      PORT: "3000"
+      OPA_URL: http://opa:8181
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env or the shell}
+      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
+      GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
+      GOOGLE_OIDC_REDIRECT_URI: ${GOOGLE_OIDC_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+    depends_on:
+      opa:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/devices', {signal: AbortSignal.timeout(2000)}).then(r => {if (!r.ok) process.exit(1)}).catch(() => process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  opa:
+    image: openpolicyagent/opa:1.21.1
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policy"]
+    volumes:
+      - ./policy:/policy:ro
+    healthcheck:
+      # Query the running PDP, not policy files in another local evaluator.
+      # This requires the named default-deny decision to be loaded and served.
+      test:
+        - CMD
+        - /opa
+        - eval
+        - --fail
+        - >-
+          response := http.send({"method": "POST", "url": "http://127.0.0.1:8181/v1/data/authz/pending_actions/allow", "headers": {"Content-Type": "application/json"}, "body": {"input": {}}, "timeout": "2s"}); response.status_code == 200; response.body.result == false
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

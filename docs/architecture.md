@@ -352,7 +352,7 @@ neither OPA nor Google; Phase 2A's real Data API check remains separate.
 Phase 3 uses verified principal and server-owned resource state and preserves
 completed duplicate approval, as described below.
 HTTP is the native OPA transport selected for this phase; sidecar/container
-deployment remains a later cloud-native step.
+deployment is now available through the local Compose topology below.
 
 ### Pending-action enforcement (Phase 3)
 
@@ -390,7 +390,73 @@ control. Direct internal use of `PendingActionApprovalService` is still the
 business primitive; HTTP decisions must use the PEP. Future entry points must
 preserve that boundary. HTTP tests replace only the PDP boundary for policy
 results and use real local auth, PEP, and decision services. Deployment as a
-sidecar/container remains a later step.
+the separate-container Compose topology below is available; Kubernetes sidecar
+deployment remains a later step.
+
+## Local container topology
+
+Host/browser → `app` container (NestJS) → Compose network → `opa` container
+(official OPA runtime and unchanged Rego policy). `compose.yaml` uses the default
+Compose network and service-name DNS; app requests go to `http://opa:8181`.
+Host/browser requests use `http://localhost:3000`, including Google OIDC login
+and callback. Loopback inside one container never addresses the other container.
+OPA listens on all container interfaces and is not published to the host; the
+application port is published on host loopback only.
+
+The multi-stage Dockerfile uses Node 24.19.0, `npm ci`, a compiled `dist/`, and
+separately installed production dependencies. Runtime includes `package.json`
+for ESM, the complete compiled MCP entry point, and `knowledge-base/` for RAG.
+It omits application sources, tests, dev dependencies, and secrets, and runs as
+non-root. `.dockerignore` excludes local environment files and dependency/build
+artifacts from the build context. Compose injects selected variables from the
+shell or existing `.env`, overriding PORT and OPA_URL for this topology. No `.env`
+is copied into the image; use `docker compose config --quiet` to validate without
+printing interpolated secrets.
+
+The image defaults to production. Local Compose explicitly selects development
+mode because the unchanged OIDC/session configuration requires it for HTTP
+localhost callbacks and cookies. This is a local topology, not production TLS
+termination. HTTPS deployments must use production mode and an external HTTPS
+callback. The browser callback must never use the internal service name.
+
+OPA's healthcheck uses `/opa eval --fail` with `http.send` against the running
+Data API, requiring HTTP 200 and `result == false` for empty input. Missing or
+unloaded policy does not pass. This works with the standard official image,
+without assuming curl, wget, or a shell is installed. `app` depends on
+`service_healthy`; its own healthcheck tests `/devices` using Node fetch.
+Startup readiness is separate from later dependency outages, which continue to
+fail closed with sanitized 503. No retry framework is added.
+
+After `docker compose up --build -d --wait`, verify the actual compiled client
+inside the application container against OPA via Compose DNS:
+
+```bash
+docker compose exec -T app node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { OpaPendingActionPolicyClient } from './dist/authorization/opa-pending-action-policy.client.js';
+
+assert.equal(process.env.OPA_URL, 'http://opa:8181');
+const client = new OpaPendingActionPolicyClient();
+const input = {
+  principal: { id: 'user-123' },
+  action: 'approve_pending_action',
+  resource: { type: 'maintenance_work_order', status: 'PENDING_APPROVAL' },
+};
+assert.equal(await client.evaluate(input), true);
+assert.equal(await client.evaluate({...input, principal: {id: ''}}), false);
+console.log('Compose network: compiled client ALLOW and DENY passed');
+JS
+```
+
+This command tests the real app-side client and named Rego decision, without
+calling Gemini or Google. Full authenticated HTTP decisions can use the existing
+login/proposal/approve examples through localhost. All workflow state and pending
+OIDC flows remain process-local; recreating the app loses them. Changes to policy
+files require restarting OPA (`docker compose restart opa`).
+
+These are two separate containers, not a Kubernetes sidecar. A later deployment
+may colocate app and OPA in one Pod with a shared network namespace; no Pod,
+service mesh, cloud infrastructure, or persistence is introduced here.
 
 ## Design decisions
 

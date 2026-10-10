@@ -1,0 +1,16 @@
+.git
+node_modules
+dist
+build
+coverage
+test
+docs
+.env
+.env.*
+.npmrc
+*.log
+*.tsbuildinfo
+*.patch
+.idea
+.vscode
+.DS_Store
