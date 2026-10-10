@@ -313,11 +313,26 @@ Development mode here does not install dev dependencies or run Nest watch mode.
 
 OPA readiness probes the running named Data API decision and expects the
 existing default denial for empty input. Compose waits for OPA health before
-starting the app; app health uses the public `/devices` endpoint. These are real
+starting the app; app health uses the public `/health/ready` endpoint. These are real
 checks rather than a sleep, and do not guarantee ongoing dependency availability.
 Restart `opa` after editing policies. See the
 [container topology and network verification](docs/architecture.md#local-container-topology)
 for a real app-client-to-PDP decision check.
+
+### Application health and shutdown
+
+`GET /health/live` and `GET /health/ready` are public, uncached endpoints returning
+HTTP 200 with `{"status":"ok"}`. Liveness means the process can serve HTTP.
+Readiness currently means Nest initialization has completed and the application
+can accept general traffic; it does not promise every capability is available.
+Neither endpoint calls Gemini, Google OIDC, MCP, or OPA. An OPA outage leaves
+health successful while protected decisions continue to fail closed with 503.
+Compose probes `/health/ready` using Node fetch.
+
+Nest shutdown hooks are enabled for termination signals such as SIGTERM. They
+run existing lifecycle cleanup, including closing an initialized MCP client,
+and close the HTTP server before the process terminates. Local process workflows
+remain available alongside Compose.
 
 ## Commands
 

@@ -6,6 +6,7 @@ import { DevicesModule } from './devices/devices.module.js';
 import { DeviceEventsModule } from './device-events/device-events.module.js';
 import { TelemetryModule } from './telemetry/telemetry.module.js';
 import { AiModule } from './ai/ai.module.js';
+import { HealthController } from './health/health.controller.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AiModule } from './ai/ai.module.js';
     TelemetryModule,
     AiModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_PIPE,

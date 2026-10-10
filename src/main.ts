@@ -4,6 +4,7 @@ import { configureOpenApi } from './openapi/configure-openapi.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   configureOpenApi(app);
   await app.listen(process.env.PORT ?? 3000);
 }

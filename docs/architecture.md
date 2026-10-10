@@ -423,9 +423,25 @@ OPA's healthcheck uses `/opa eval --fail` with `http.send` against the running
 Data API, requiring HTTP 200 and `result == false` for empty input. Missing or
 unloaded policy does not pass. This works with the standard official image,
 without assuming curl, wget, or a shell is installed. `app` depends on
-`service_healthy`; its own healthcheck tests `/devices` using Node fetch.
+`service_healthy`; its own healthcheck tests `/health/ready` using Node fetch.
 Startup readiness is separate from later dependency outages, which continue to
 fail closed with sanitized 503. No retry framework is added.
+
+The public `/health/live` endpoint checks process/HTTP liveness; `/health/ready`
+currently reports application readiness after Nest initialization. Both return
+HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`. There is no universal
+external dependency requirement for accepting general traffic, so neither probes
+Gemini, OIDC, MCP, or OPA. Capability-specific failures retain their existing
+handling, including fail-closed 503 for OPA failures. Readiness is not an assertion
+that all capabilities work, and OPA outages must not trigger app liveness failure.
+
+Bootstrap enables standard Nest shutdown hooks. On SIGTERM/SIGINT, Nest awaits
+existing lifecycle hooks, including `McpDeviceClientService.onModuleDestroy()`
+closing its client if initialized, then closes the HTTP server and terminates.
+The existing exec-form Node entrypoint and Compose `init: true` forward signals;
+no custom signal handlers or new cleanup resources are introduced. Container
+termination still has a finite grace period; no guarantee is added for completing
+long-running AI requests or persisting in-memory workflow state during shutdown.
 
 After `docker compose up --build -d --wait`, verify the actual compiled client
 inside the application container against OPA via Compose DNS:
