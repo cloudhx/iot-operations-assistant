@@ -15,6 +15,7 @@
     "start:prod": "node --env-file=.env dist/main",
     "lint": "oxlint src/ test/",
     "test": "vitest run",
+    "test:integration:local": "node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts test/integration/health/health-http.integration-spec.ts test/integration/auth/auth-http.integration-spec.ts test/integration/ai/http/device-assistant-http.integration-spec.ts test/integration/ai/http/pending-actions-http.integration-spec.ts test/integration/openapi/openapi.integration-spec.ts test/integration/mcp/mcp-stdio.integration-spec.ts --reporter=verbose --no-file-parallelism",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",

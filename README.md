@@ -334,6 +334,20 @@ run existing lifecycle cleanup, including closing an initialized MCP client,
 and close the HTTP server before the process terminates. Local process workflows
 remain available alongside Compose.
 
+### Continuous integration
+
+GitHub Actions verifies pull requests targeting `main` and pushes to `main` using
+Node 24, `npm ci`, lint, build, unit tests, and the explicit local HTTP/OpenAPI/MCP
+integration suites. The integration command expects a preceding build. Rego tests
+run through the official OPA 1.21.1 image, matching the Compose runtime.
+
+CI also builds the application image and starts the real `app` + `opa` Compose
+topology, waits for both healthchecks, and checks `/health/live` and `/health/ready`
+from the host. A non-secret placeholder Gemini key is used only for startup; no
+live Gemini or Google credentials are required. Failure logs precede automatic
+Compose cleanup. Live AI/RAG evaluation and manual Google login/approval remain
+separate workflows. CI does not publish images or deploy anything.
+
 ## Commands
 
 | Command | Purpose |
@@ -343,6 +357,7 @@ remain available alongside Compose.
 | `npm run lint` | Run Oxlint on src/ and test/ |
 | `npm run format` | Rewrite src/ and test/ TypeScript formatting with Prettier |
 | `npm test` | Run all Vitest specs matched by the main config |
+| `npm run test:integration:local` | Run deterministic health/auth/assistant/approval/OpenAPI/MCP integration tests after building |
 | `npm run test:cov` | Run tests with coverage |
 | `npm run mcp:test` | Build and run the MCP stdio protocol integration spec |
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |

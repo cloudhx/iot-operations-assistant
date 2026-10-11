@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration:local
+
+      - name: Provide official OPA CLI through its pinned container
+        run: |
+          mkdir -p "$RUNNER_TEMP/opa-bin"
+          cat > "$RUNNER_TEMP/opa-bin/opa" <<'SH'
+          #!/bin/sh
+          exec docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace openpolicyagent/opa:1.21.1 "$@"
+          SH
+          chmod +x "$RUNNER_TEMP/opa-bin/opa"
+          echo "$RUNNER_TEMP/opa-bin" >> "$GITHUB_PATH"
+      - run: npm run authz:policy:test
+
+      - name: Build and smoke-test Compose runtime
+        id: compose
+        env:
+          GEMINI_API_KEY: ci-placeholder-no-live-gemini-calls
+        run: |
+          docker compose config --quiet
+          docker compose up -d --build --wait --wait-timeout 120
+          curl --fail --silent --show-error --max-time 10 http://localhost:3000/health/live
+          curl --fail --silent --show-error --max-time 10 http://localhost:3000/health/ready
+
+      - name: Container diagnostics on failure
+        if: failure() && steps.compose.outcome == 'failure'
+        env:
+          GEMINI_API_KEY: ci-placeholder-no-live-gemini-calls
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --tail 200
+
+      - name: Tear down Compose runtime
+        if: always()
+        env:
+          GEMINI_API_KEY: ci-placeholder-no-live-gemini-calls
+        run: docker compose down --volumes --remove-orphans
