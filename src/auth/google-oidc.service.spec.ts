@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import * as oidc from 'openid-client';
 import { GoogleOidcService } from './google-oidc.service.js';
+import { OidcFlowStore, type OidcLoginFlow } from './oidc-flow-store.js';
 
 // Replace discovery transport only. The real library exchanges codes and validates JWTs.
 vi.mock('openid-client', async (original) => {
@@ -14,6 +15,8 @@ describe('Google OIDC protocol adapter', () => {
   let server: Server;
   let issuer: string;
   let google: GoogleOidcService;
+  let flows: OidcFlowStore;
+  let entries: Map<string, { flow: OidcLoginFlow; expiresAt: number }>;
   let nonce: string;
   let challenge: string;
   let overrides: Record<string, unknown>;
@@ -122,7 +125,22 @@ describe('Google OIDC protocol adapter', () => {
         ],
       }),
     );
-    google = new GoogleOidcService();
+    // Test-only store substitute. Runtime wiring always uses Redis.
+    entries = new Map();
+    flows = {
+      store: vi.fn(async (id, flow, ttlSeconds) => {
+        entries.set(id, {
+          flow: structuredClone(flow),
+          expiresAt: Date.now() + ttlSeconds * 1000,
+        });
+      }),
+      consume: vi.fn(async (id) => {
+        const entry = entries.get(id);
+        entries.delete(id);
+        return entry && entry.expiresAt > Date.now() ? entry.flow : undefined;
+      }),
+    };
+    google = new GoogleOidcService(flows);
     overrides = {};
     badSignature = false;
   });
@@ -163,6 +181,45 @@ describe('Google OIDC protocol adapter', () => {
       google.completeLogin(flow.query.toString(), flow.flowId),
     ).rejects.toMatchObject({ status: 401 });
   });
+  it('completes login on another service instance through the shared store', async () => {
+    const flow = await login();
+    const callbackInstance = new GoogleOidcService(flows);
+    expect(
+      await callbackInstance.completeLogin(flow.query.toString(), flow.flowId),
+    ).toMatchObject({ id: 'verified-subject' });
+    expect(flows.store).toHaveBeenCalledWith(
+      flow.flowId,
+      expect.objectContaining({
+        state: expect.any(String),
+        nonce: expect.any(String),
+        verifier: expect.any(String),
+      }),
+      600,
+    );
+    expect(entries.size).toBe(0);
+  });
+
+  it('fails closed with sanitized 503 when storing or consuming a flow fails', async () => {
+    const flow = await login();
+    const failure = new Error('redis://credential@private-host:6379');
+    vi.mocked(flows.store).mockRejectedValueOnce(failure);
+    await expect(google.beginLogin()).rejects.toMatchObject({
+      response: {
+        statusCode: 503,
+        message: 'Google authentication is unavailable.',
+      },
+    });
+    vi.mocked(flows.consume).mockRejectedValueOnce(failure);
+    await expect(
+      google.completeLogin(flow.query.toString(), flow.flowId),
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 503,
+        message: 'Google authentication is unavailable.',
+      },
+    });
+  });
+
   it('omits optional profile fields and never uses an unverified email as identity', async () => {
     const flow = await login();
     overrides = { email_verified: false, name: undefined };

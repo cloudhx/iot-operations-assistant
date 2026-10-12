@@ -49,6 +49,7 @@ export class AuthController {
     description: 'Verified login; redirect to /auth/me.',
   })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired login flow.' })
+  @ApiResponse({ status: 503, description: 'Authentication is unavailable.' })
   async callback(
     @Req() request: Request,
     @Res() response: Response,

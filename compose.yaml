@@ -10,6 +10,7 @@ services:
       NODE_ENV: development
       PORT: "3000"
       OPA_URL: http://opa:8181
+      REDIS_URL: redis://redis:6379
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env or the shell}
       GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
       GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
@@ -17,6 +18,8 @@ services:
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
     depends_on:
       opa:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -29,6 +32,16 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  redis:
+    image: redis:8.2.10-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   opa:
     image: openpolicyagent/opa:1.21.1

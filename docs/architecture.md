@@ -395,9 +395,11 @@ deployment remains a later step.
 
 ## Local container topology
 
-Host/browser → `app` container (NestJS) → Compose network → `opa` container
-(official OPA runtime and unchanged Rego policy). `compose.yaml` uses the default
-Compose network and service-name DNS; app requests go to `http://opa:8181`.
+Host/browser → `app` container (NestJS) → Compose network → `opa` and `redis` containers
+(official OPA runtime with unchanged Rego policy, and official Redis). `compose.yaml` uses the default
+Compose network and service-name DNS; policy requests go to `http://opa:8181`
+and OIDC flow operations go to `redis://redis:6379`. Redis has no published host
+port and stores only ephemeral login-flow state, with persistence disabled.
 Host/browser requests use `http://localhost:3000`, including Google OIDC login
 and callback. Loopback inside one container never addresses the other container.
 OPA listens on all container interfaces and is not published to the host; the
@@ -431,13 +433,14 @@ The public `/health/live` endpoint checks process/HTTP liveness; `/health/ready`
 currently reports application readiness after Nest initialization. Both return
 HTTP 200 with `{"status":"ok"}` and `Cache-Control: no-store`. There is no universal
 external dependency requirement for accepting general traffic, so neither probes
-Gemini, OIDC, MCP, or OPA. Capability-specific failures retain their existing
+Gemini, OIDC, MCP, OPA, or Redis. Capability-specific failures retain their existing
 handling, including fail-closed 503 for OPA failures. Readiness is not an assertion
 that all capabilities work, and OPA outages must not trigger app liveness failure.
 
 Bootstrap enables standard Nest shutdown hooks. On SIGTERM/SIGINT, Nest awaits
 existing lifecycle hooks, including `McpDeviceClientService.onModuleDestroy()`
-closing its client if initialized, then closes the HTTP server and terminates.
+closing its client if initialized, and Redis flow-store connection cleanup, then
+closes the HTTP server and terminates.
 The existing exec-form Node entrypoint and Compose `init: true` forward signals;
 no custom signal handlers or new cleanup resources are introduced. Container
 termination still has a finite grace period; no guarantee is added for completing
@@ -466,13 +469,35 @@ JS
 
 This command tests the real app-side client and named Rego decision, without
 calling Gemini or Google. Full authenticated HTTP decisions can use the existing
-login/proposal/approve examples through localhost. All workflow state and pending
-OIDC flows remain process-local; recreating the app loses them. Changes to policy
+login/proposal/approve examples through localhost. Pending actions and work orders
+remain process-local; recreating the app loses them. OIDC flows are now shared
+in Redis with a ten-minute TTL and atomic one-time consumption; app restart does
+not lose them, while Redis restart may. Changes to policy
 files require restarting OPA (`docker compose restart opa`).
 
-These are two separate containers, not a Kubernetes sidecar. A later deployment
+These are three separate containers, not a Kubernetes sidecar. A later deployment
 may colocate app and OPA in one Pod with a shared network namespace; no Pod,
-service mesh, cloud infrastructure, or persistence is introduced here.
+service mesh, cloud infrastructure, or durable business persistence is introduced here.
+
+## Redis OIDC flow boundary
+
+`GoogleOidcService` depends on `OidcFlowStore`; Nest wires `RedisOidcFlowStore`.
+The store exposes TTL-based storage and atomic one-time consumption, returning
+absent for missing/expired flows. Only state, nonce and PKCE verifier are stored
+under `oidc:flow:<opaque-handle>` for 600 seconds. There is no flow cleanup loop
+or process-local fallback. This removes the login/callback sticky-routing
+requirement for instances sharing Redis and compatible auth configuration.
+The old per-process map cap is not a distributed admission policy.
+
+Redis is a lazily connected, reusable dependency with bounded connection/command
+waits and Nest lifecycle cleanup. Storage failure maps to sanitized auth 503;
+missing flow and protocol validation failure retain 401. A capability-specific
+Redis outage does not change general app readiness or process liveness. Stateless
+session cookies, local logout, OPA authorization and business workflows are unchanged.
+Redis does not store Google tokens, principals, sessions, pending actions, work
+orders, AI traces or RAG data. Durable workflow storage and cloud Redis security
+remain separate phases. CI runs real adapter TTL/consume tests on the Compose
+network; the ordinary local test command still needs no running Redis.
 
 ## Design decisions
 

@@ -50,8 +50,16 @@ jobs:
           curl --fail --silent --show-error --max-time 10 http://localhost:3000/health/live
           curl --fail --silent --show-error --max-time 10 http://localhost:3000/health/ready
 
+      - name: Verify Redis adapter over the Compose network
+        id: redis
+        env:
+          GEMINI_API_KEY: ci-placeholder-no-live-gemini-calls
+        run: |
+          # Reuse the app runtime/network with host-installed test dependencies.
+          docker compose run --rm --no-deps --user "$(id -u):$(id -g)" --volume "$PWD:/workspace" --workdir /workspace app npm run auth:redis:test
+
       - name: Container diagnostics on failure
-        if: failure() && steps.compose.outcome == 'failure'
+        if: failure() && (steps.compose.outcome == 'failure' || steps.redis.outcome == 'failure')
         env:
           GEMINI_API_KEY: ci-placeholder-no-live-gemini-calls
         run: |

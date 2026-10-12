@@ -295,12 +295,12 @@ docker compose up --build -d --wait
 curl --fail http://localhost:3000/devices
 # Rego tests use the same official OPA image and read-only policy mount:
 docker compose run --rm --no-deps opa test /policy -v
-# Stop both services; in-memory proposals/work orders are lost on app restart:
+# Stop all three services; in-memory proposals/work orders are lost on app restart:
 docker compose down
 ```
 
-`app` is exposed only on host loopback port 3000; `opa` has no published host
-port. Compose DNS resolves `opa` inside the network, so the app's explicit
+`app` is exposed only on host loopback port 3000; `opa` and `redis` have no
+published host ports. Compose DNS resolves `opa` inside the network, so the app's explicit
 `OPA_URL=http://opa:8181` overrides the local `.env` loopback value. `localhost`
 inside a container refers to that container. The existing authorization path,
 fail-closed 503 behavior, and duplicate-approval semantics are unchanged.
@@ -319,18 +319,44 @@ Restart `opa` after editing policies. See the
 [container topology and network verification](docs/architecture.md#local-container-topology)
 for a real app-client-to-PDP decision check.
 
+### Redis OIDC flow state
+
+Redis is used only for the short-lived Google login-flow state: state, nonce and
+PKCE verifier. Keys are `oidc:flow:<opaque-handle>`, expire after 600 seconds, and
+are consumed once with atomic `GETDEL`, including failed callbacks. Login and
+callback may reach different app instances sharing Redis; sticky routing is no
+longer needed for these flows. Application sessions remain stateless encrypted
+cookies. Redis does not store principals, tokens, sessions, pending actions, work
+orders, traces or RAG data; durable business persistence remains out of scope.
+
+Compose adds official Redis 8.2.10 with persistence disabled and a `redis-cli ping`
+healthcheck. The app uses `REDIS_URL=redis://redis:6379` and waits for initial Redis
+health alongside OPA. Redis is not published to the host. For host-run NestJS,
+start a separate loopback-only local Redis and use the `.env.example` default:
+
+```bash
+docker run --rm --name iot-oidc-redis -p 127.0.0.1:6379:6379 redis:8.2.10-alpine redis-server --save "" --appendonly no
+```
+
+Host URL: `redis://127.0.0.1:6379`; Compose URL: `redis://redis:6379`.
+Redis connects lazily, reuses a connection and closes on Nest shutdown. Outages
+fail login-flow operations closed with sanitized 503, without a memory fallback;
+missing/expired flows return 401. Existing sessions, logout and general app
+health remain independent of Redis. Redis restart may invalidate pending login
+flows. Local Redis authentication/TLS and managed deployment are later concerns.
+
 ### Application health and shutdown
 
 `GET /health/live` and `GET /health/ready` are public, uncached endpoints returning
 HTTP 200 with `{"status":"ok"}`. Liveness means the process can serve HTTP.
 Readiness currently means Nest initialization has completed and the application
 can accept general traffic; it does not promise every capability is available.
-Neither endpoint calls Gemini, Google OIDC, MCP, or OPA. An OPA outage leaves
+Neither endpoint calls Gemini, Google OIDC, MCP, OPA, or Redis. An OPA outage leaves
 health successful while protected decisions continue to fail closed with 503.
 Compose probes `/health/ready` using Node fetch.
 
 Nest shutdown hooks are enabled for termination signals such as SIGTERM. They
-run existing lifecycle cleanup, including closing an initialized MCP client,
+run existing lifecycle cleanup, including closing initialized MCP and Redis clients,
 and close the HTTP server before the process terminates. Local process workflows
 remain available alongside Compose.
 
@@ -342,10 +368,11 @@ integration suites. The integration command expects a preceding build. Rego test
 run through the official OPA 1.21.1 image, matching the Compose runtime.
 
 CI also builds the application image and starts the real `app` + `opa` Compose
-topology, waits for both healthchecks, and checks `/health/live` and `/health/ready`
+topology with Redis, waits for all three healthchecks, and checks `/health/live` and `/health/ready`
 from the host. A non-secret placeholder Gemini key is used only for startup; no
 live Gemini or Google credentials are required. Failure logs precede automatic
-Compose cleanup. Live AI/RAG evaluation and manual Google login/approval remain
+Compose cleanup. The real Redis adapter suite also runs over the Compose network
+using local test dependencies; no cloud Redis credentials are used. Live AI/RAG evaluation and manual Google login/approval remain
 separate workflows. CI does not publish images or deploy anything.
 
 ## Commands
@@ -363,6 +390,7 @@ separate workflows. CI does not publish images or deploy anything.
 | `npm run ai:http:test` | Run the Device Assistant HTTP boundary integration spec |
 | `npm run authz:policy:test` | Run Rego unit tests with the separately installed official OPA CLI |
 | `npm run authz:pdp:start` | Start the standalone local OPA PDP on 127.0.0.1:8181; NestJS is not connected |
+| `npm run auth:redis:test` | Verify real Redis flow TTL and atomic consume; requires local Redis |
 | `npm run auth:http:test` | Verify local session, logout, and authentication guards |
 | `npm run ai:approval:http:test` | Verify pending-action HTTP decisions with real services |
 | `npm run api:openapi:test` | Verify the published OpenAPI contract and Swagger UI mount |

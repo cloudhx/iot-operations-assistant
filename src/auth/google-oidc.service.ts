@@ -5,18 +5,12 @@ import {
 } from '@nestjs/common';
 import * as oidc from 'openid-client';
 import type { AuthenticatedPrincipal } from './authenticated-principal.js';
-
-type LoginFlow = {
-  state: string;
-  nonce: string;
-  verifier: string;
-  expiresAt: number;
-};
+import { OidcFlowStore, OIDC_FLOW_TTL_SECONDS } from './oidc-flow-store.js';
 
 @Injectable()
 export class GoogleOidcService {
   private configuration?: Promise<oidc.Configuration>;
-  private readonly flows = new Map<string, LoginFlow>();
+  constructor(private readonly flows: OidcFlowStore) {}
 
   private redirectUri(): string {
     const uri = process.env.GOOGLE_OIDC_REDIRECT_URI;
@@ -74,18 +68,11 @@ export class GoogleOidcService {
   async beginLogin(): Promise<{ authorizationUrl: string; flowId: string }> {
     const redirect = this.redirectUri();
     const config = await this.config();
-    const flow: LoginFlow = {
+    const flow = {
       state: oidc.randomState(),
       nonce: oidc.randomNonce(),
       verifier: oidc.randomPKCECodeVerifier(),
-      expiresAt: Date.now() + 600_000,
     };
-    for (const [id, old] of this.flows)
-      if (old.expiresAt <= Date.now()) this.flows.delete(id);
-    if (this.flows.size >= 1000)
-      throw new ServiceUnavailableException(
-        'Google authentication is unavailable.',
-      );
     const flowId = oidc.randomState();
     const authorizationUrl = oidc.buildAuthorizationUrl(config, {
       redirect_uri: redirect,
@@ -95,7 +82,13 @@ export class GoogleOidcService {
       code_challenge: await oidc.calculatePKCECodeChallenge(flow.verifier),
       code_challenge_method: 'S256',
     }).href;
-    this.flows.set(flowId, flow);
+    try {
+      await this.flows.store(flowId, flow, OIDC_FLOW_TTL_SECONDS);
+    } catch {
+      throw new ServiceUnavailableException(
+        'Google authentication is unavailable.',
+      );
+    }
     return { authorizationUrl, flowId };
   }
 
@@ -103,11 +96,17 @@ export class GoogleOidcService {
     query: string,
     flowId?: string,
   ): Promise<AuthenticatedPrincipal> {
-    const flow = flowId ? this.flows.get(flowId) : undefined;
-    if (flowId) this.flows.delete(flowId); // Consume even failed callbacks; never replay approval.
+    // Consume atomically before protocol validation, including failed callbacks.
+    let flow;
     try {
-      if (!flow || flow.expiresAt <= Date.now())
-        throw new Error('Invalid login flow');
+      flow = flowId ? await this.flows.consume(flowId) : undefined;
+    } catch {
+      throw new ServiceUnavailableException(
+        'Google authentication is unavailable.',
+      );
+    }
+    try {
+      if (!flow) throw new Error('Invalid login flow');
       const callback = new URL(this.redirectUri());
       callback.search = query;
       const tokens = await oidc.authorizationCodeGrant(
